@@ -2,7 +2,7 @@
 
 YunX（云析）是一款 Android 网盘分享链接解析与高速下载应用（[github.com/CYQawa/YunX](https://github.com/CYQawa/YunX)，AGPL-3.0）。
 **YunX Desktop 是它的 Windows 桌面移植版**：采用 Compose Multiplatform Desktop(JVM) + Kotlin，
-最大化复用原项目的纯 Kotlin 业务逻辑（六家网盘的网络协议、分享解析、分片并发下载引擎）。[由Deepseek flash v4 0731完成]
+最大化复用原项目的纯 Kotlin 业务逻辑（六家网盘的网络协议、分享解析、分片并发下载引擎）。
 
 ## 功能
 - 分享链接解析：夸克 / UC / 迅雷 / 百度 / 139 / 123 分享链接一键识别（含提取码）
@@ -49,6 +49,22 @@ JCEF 首次运行会把 Chromium 内核解包到 `%USERPROFILE%\.jcef-bundle`（
 - Windows 免安装版（zip）：在右侧 Releases 下载 YunX-Desktop-<版本>-win64-portable.zip，
   解压后双击 YunX Desktop/YunX Desktop.exe 即可运行，无需安装、无需 Java。
 - 建议核对 Release 附带的 SHA256 校验值；未签名 exe 首次运行可能被 SmartScreen/杀软提示，属正常现象。
+
+## AI 生成声明（AI Disclosure）
+
+本项目的**桌面移植工程**（YunX Desktop）由维护者提出需求并负责验证，在 **AI 编码助手 DeepSeek v4 Flash（deepseek-v4-flash）** 的辅助下开发：
+
+- 工程搭建、Compose Multiplatform 界面、解析/下载/云盘/账号流程整合、网页登录（内嵌 Chromium/JCEF）
+  实现、Windows 打包与大量调试修复工作，主要由 AI 生成候选代码，经维护者审查、测试验证后合入；
+  维护者负责需求定义、测试、打包与发布。
+- **上游归属不受影响**：本项目复用的网盘协议、分享解析与下载引擎逻辑源自
+  [CYQawa/YunX](https://github.com/CYQawa/YunX)（Android 版，AGPL-3.0，人类作者），
+  其版权与署名归原作者所有，详见 [PORTING.md](./PORTING.md)；本声明不覆盖、不减损上游作者的权利。
+- **许可一致**：AI 生成或辅助修改的代码与全仓库一致，均以 GNU AGPL-3.0 发布，不额外主张版权；
+  任何修改与再分发请遵守 [LICENSE](./LICENSE)。
+- **质量与责任**：AI 生成代码可能含有缺陷或安全隐患，欢迎通过 Issues / Pull Requests 审查指正；
+  使用者请自行评估并承担风险（另见下方免责声明）。
+- **所用 AI**：DeepSeek v4 Flash（deepseek-v4-flash）——DeepSeek 出品的大语言模型，用于代码生成、重构与排错。
 
 ## 免责声明与许可
 - 仅供个人学习与技术交流；请遵守各网盘平台的服务条款。网盘协议基于抓包分析，可能随官方调整失效。
