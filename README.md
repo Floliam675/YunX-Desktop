@@ -2,7 +2,7 @@
 
 YunX（云析）是一款 Android 网盘分享链接解析与高速下载应用（[github.com/CYQawa/YunX](https://github.com/CYQawa/YunX)，AGPL-3.0）。
 **YunX Desktop 是它的 Windows 桌面移植版**：采用 Compose Multiplatform Desktop(JVM) + Kotlin，
-最大化复用原项目的纯 Kotlin 业务逻辑（六家网盘的网络协议、分享解析、分片并发下载引擎）。
+最大化复用原项目的纯 Kotlin 业务逻辑（六家网盘的网络协议、分享解析、分片并发下载引擎）。[由Deepseek flash v4 0731完成]
 
 ## 功能
 - 分享链接解析：夸克 / UC / 迅雷 / 百度 / 139 / 123 分享链接一键识别（含提取码）
