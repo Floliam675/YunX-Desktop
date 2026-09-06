@@ -1,5 +1,7 @@
 # YunX Desktop（云析桌面版）
 
+> 项目主页：<https://github.com/Floliam675/YunX-Desktop> · Releases：<https://github.com/Floliam675/YunX-Desktop/releases>
+
 YunX（云析）是一款 Android 网盘分享链接解析与高速下载应用（[github.com/CYQawa/YunX](https://github.com/CYQawa/YunX)，AGPL-3.0）。
 **YunX Desktop 是它的 Windows 桌面移植版**：采用 Compose Multiplatform Desktop(JVM) + Kotlin，
 最大化复用原项目的纯 Kotlin 业务逻辑（六家网盘的网络协议、分享解析、分片并发下载引擎）。
@@ -46,7 +48,7 @@ JCEF 首次运行会把 Chromium 内核解包到 `%USERPROFILE%\.jcef-bundle`（
 > 说明：账号数据仅保存在本机（见上方数据目录），不上传任何服务器。
 
 ## 下载
-- Windows 免安装版（zip）：在右侧 Releases 下载 YunX-Desktop-<版本>-win64-portable.zip，
+- Windows 免安装版（zip）：在 [Releases](https://github.com/Floliam675/YunX-Desktop/releases) 下载 YunX-Desktop-<版本>-win64-portable.zip，
   解压后双击 YunX Desktop/YunX Desktop.exe 即可运行，无需安装、无需 Java。
 - 建议核对 Release 附带的 SHA256 校验值；未签名 exe 首次运行可能被 SmartScreen/杀软提示，属正常现象。
 
