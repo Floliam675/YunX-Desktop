@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath 工件配置示例：对便携 zip 内的启动器 exe 做 Authenticode 签名。
+  实际提交签名时，以 SignPath 后台（Artifact Configurations）生成的配置为准，
+  把它的 slug 填到仓库变量 SIGNPATH_ARTIFACT_CONFIG_SLUG 即可。
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration">
+  <zip-file>
+    <pe-file-set path="**/YunX Desktop.exe">
+      <authenticode-sign/>
+    </pe-file-set>
+    <!-- Java 版里没有 exe，如需签名 jar 可在此追加 jar-file-set -->
+  </zip-file>
+</artifact-configuration>

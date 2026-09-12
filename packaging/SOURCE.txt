@@ -1,0 +1,26 @@
+YunX Desktop 源码获取说明（对应本二进制：<VERSION>）
+======================================================
+
+本程序基于 GNU AGPL-3.0 发布。依据 AGPL 第 4/5 节，你可以从以下地址获取
+与本版本对应的完整源码，并依照 AGPL-3.0 使用、修改与再分发：
+
+  源码仓库：https://github.com/Floliam675/YunX-Desktop
+  版本标签：v<VERSION>（对应仓库该 tag 的源码，或 Release 页自动附带的
+            "Source code" 压缩包）
+
+上游项目：本软件移植自 CYQawa/YunX（AGPL-3.0）
+          https://github.com/CYQawa/YunX
+
+完整许可文本：随附 LICENSE.txt，或
+          https://www.gnu.org/licenses/agpl-3.0.txt
+
+从源码构建（要求 JDK 17+）：
+  gradlew :desktop:run                    # 直接运行
+  gradlew :desktop:createDistributable    # 生成免安装目录
+  将 desktop/build/compose/binaries/main/app/"YunX Desktop"
+  压缩为 zip 即得到便携版。
+  可选瘦身：tools/trim-jcef-locales.ps1 裁剪 Chromium 语言包。
+
+提醒：对 AGPL 软件进行修改与再分发时，须保留本声明与许可、向接收者提供
+对应源码；网络远程使用（若提供在线服务）同样适用 AGPL 第 13 节。
+======================================================
