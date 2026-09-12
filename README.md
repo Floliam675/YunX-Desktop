@@ -54,7 +54,7 @@ JCEF 首次运行会把 Chromium 内核解包到 `%USERPROFILE%\.jcef-bundle`（
 
 ## AI 生成声明（AI Disclosure）
 
-本项目的**桌面移植工程**（YunX Desktop）由维护者提出需求并负责验证，在 **AI 编码助手 DeepSeek v4 Flash（deepseek-v4-flash）** 的辅助下开发：
+本项目的**桌面移植工程**（YunX Desktop在 **AI 编码助手 DeepSeek v4 Flash（deepseek-v4-flash）** 的辅助下开发：
 
 - 工程搭建、Compose Multiplatform 界面、解析/下载/云盘/账号流程整合、网页登录（内嵌 Chromium/JCEF）
   实现、Windows 打包与大量调试修复工作，主要由 AI 生成候选代码，经维护者审查、测试验证后合入；
