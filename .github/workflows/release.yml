@@ -1,0 +1,172 @@
+name: Release (portable build, optional code signing)
+
+# 触发：推送 v* 标签，或手动运行。
+#   git tag v0.2.0 && git push origin v0.2.0
+#
+# 产物：YunX-Desktop-<version>-win64-portable.zip（未签名；若启用签名则为已签名版）
+#       （包内同时附带 Start-YunX.bat：使用包内已签名的 Java launcher 启动，供智能应用控制拦截的机器使用）
+#       SHA256.txt
+#
+# 可选代码签名（SignPath，开源可免费申请：https://signpath.org/）：
+#   在仓库 Settings → Secrets and variables → Actions 里配置
+#     变量(Variables)：   SIGNPATH_ENABLED=true
+#                         SIGNPATH_ORG_ID / SIGNPATH_PROJECT_SLUG /
+#                         SIGNPATH_POLICY_SLUG / SIGNPATH_ARTIFACT_CONFIG_SLUG
+#     密钥(Secrets)：     SIGNPATH_API_TOKEN
+#   未配置时签名任务自动跳过，仍会产出未签名包。
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（例如 0.2.0）'
+        required: false
+        default: '0.2.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      zip_name: ${{ steps.version.outputs.zip_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref_name }}"
+          $ver = if ("$ref".StartsWith("v")) { "$ref".Substring(1) } else { "${{ github.event.inputs.version }}" }
+          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = "0.2.0" }
+          "version=$ver"            >> $env:GITHUB_OUTPUT
+          "zip_name=YunX-Desktop-$ver-win64-portable.zip" >> $env:GITHUB_OUTPUT
+                    Write-Host "version=$ver"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build app image (portable, no installer)
+        run: .\gradlew.bat :desktop:createDistributable --console=plain
+
+      - name: Trim JCEF locale packs (slimming)
+        shell: pwsh
+        run: |
+          ./tools/trim-jcef-locales.ps1 -AppImageDir "desktop/build/compose/binaries/main/app/YunX Desktop"
+
+      - name: Inject license / source / readme into package
+        shell: pwsh
+        run: |
+          $app = "desktop/build/compose/binaries/main/app/YunX Desktop"
+          Copy-Item "packaging/README.txt" "$app/README.txt" -Force
+          Copy-Item "LICENSE"              "$app/LICENSE.txt" -Force
+          (Get-Content "packaging/SOURCE.txt" -Raw -Encoding UTF8).Replace("<VERSION>", "${{ steps.version.outputs.version }}") |
+            Set-Content "$app/SOURCE.txt" -Encoding UTF8
+
+      - name: Bundle signed JRE launcher + start script (no Java install needed)
+        shell: pwsh
+        run: |
+          # 把构建用 JDK 自带的、由 Java 厂商签名的 launcher 复制进包内 runtime，
+          # 这样即使 exe 被智能应用控制拦截，用户双击 Start-YunX.bat 也能运行（无需安装 Java）。
+          $app = "desktop/build/compose/binaries/main/app/YunX Desktop"
+          Copy-Item "$env:JAVA_HOME\bin\java.exe"  "$app/runtime/bin/java.exe"  -Force
+          Copy-Item "$env:JAVA_HOME\bin\javaw.exe" "$app/runtime/bin/javaw.exe" -Force
+          Copy-Item "packaging/Start-YunX.bat" "$app/Start-YunX.bat" -Force
+          & "$app/runtime/bin/java.exe" -version 2>&1 | Select-Object -First 1
+      - name: Package zip (exe edition)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          tar.exe -a -c -f "dist/${{ steps.version.outputs.zip_name }}" -C "desktop/build/compose/binaries/main/app" "YunX Desktop"
+
+      - name: Checksums
+        shell: pwsh
+        run: |
+          $lines = foreach ($f in Get-ChildItem dist -Filter *.zip | Sort-Object Name) {
+            $h = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
+            "$h  $($f.Name)"
+          }
+          $lines | Set-Content dist/SHA256.txt -Encoding ascii
+          Get-Content dist/SHA256.txt
+
+      - name: Upload unsigned artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows
+          path: dist/*
+          if-no-files-found: error
+
+  sign:
+    needs: build
+    # 只在你配置了 SIGNPATH_ENABLED=true 时运行；否则整个签名任务跳过
+    if: ${{ vars.SIGNPATH_ENABLED == 'true' }}
+    runs-on: windows-latest
+    steps:
+      - name: Submit signing request to SignPath
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORG_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIG_SLUG }}
+          github-artifact-name: unsigned-windows
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Upload signed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-windows
+          path: signed/*
+          if-no-files-found: error
+
+  publish:
+    needs: [ build, sign ]
+    if: ${{ always() && needs.build.result == 'success' && (needs.sign.result == 'success' || needs.sign.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download signed artifacts (preferred)
+        id: dl_signed
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-windows
+          path: dist
+
+      - name: Download unsigned artifacts (fallback)
+        if: ${{ steps.dl_signed.outcome != 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: unsigned-windows
+          path: dist
+
+      - name: Show files
+        run: ls -lh dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', needs.build.outputs.version) }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', needs.build.outputs.version) }}
+          draft: true
+          generate_release_notes: true
+          body: |
+            未签名的 Windows 便携包。若系统提示被拦截：
+            - SmartScreen：点「更多信息 → 仍要运行」。
+            - 智能应用控制（Smart App Control，无“仍要运行”）：双击包内的 Start-YunX.bat，
+              它用包内已签名的 Java launcher 启动，无需安装任何东西（也无需关闭该功能）。
+            请用 SHA256.txt 校验文件完整性。详见 README「常见问题」。
+          files: |
+            dist/**
