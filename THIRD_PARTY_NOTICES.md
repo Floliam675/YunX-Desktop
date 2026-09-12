@@ -12,6 +12,7 @@ YunX Desktop 复用了以下第三方组件/项目。各组件以各自许可证
 | JavaFX (OpenJFX 17) | 历史 WebView 登录实现（已停用，仍随包） | GPL-2.0-with-classpath-exception |
 | OkHttp / Okio | 网络与流 | Apache-2.0 |
 | org.json | JSON 解析 | JSON License (permissive) |
+| OpenJDK 运行时（打包内置，来自构建用 JDK：Azul Zulu 或 Eclipse Temurin） | 运行本程序所需 JRE，以及包内 `runtime\bin\java(w).exe` launcher（该 launcher 由 Java 厂商签名） | GPL-2.0-with-classpath-exception |
 | JOGL / GlueGen (jcef 依赖) | 渲染辅助 | BSD-3-Clause |
 | Material Icons (extended) | 图标 | Apache-2.0 |
 
