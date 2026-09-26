@@ -33,7 +33,7 @@ import java.net.URI
 import kotlinx.coroutines.launch
 
 /** 应用版本（与打包配置保持一致） */
-const val APP_VERSION = "0.2.0"
+const val APP_VERSION = "0.3.0"
 
 private const val REPO_URL = "https://github.com/Floliam675/YunX-Desktop"
 private const val RELEASES_URL = REPO_URL + "/releases"

@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yunx.app.data.db.DownloadTaskEntity
+import com.yunx.app.data.network.ShareLinkParser
 import com.yunx.app.data.network.SharePlatform
 import com.yunx.desktop.AppServices
 import com.yunx.desktop.app.DriveId
@@ -86,10 +87,32 @@ fun ResolveScreen(services: AppServices, snackbar: SnackbarHostState, scope: Cor
                 value = link,
                 onValueChange = { link = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("粘贴网盘分享链接") },
+                label = { Text("粘贴网盘分享链接（也支持整段分享文案）") },
                 supportingText = { Text("支持：夸克 pan.quark.cn / UC drive.uc.cn / 迅雷 pan.xunlei.com / 百度 pan.baidu.com / 139 yun.139.com / 123pan") },
                 minLines = 2,
             )
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = {
+                    val text = clipboardText()
+                    if (text.isNullOrBlank()) {
+                        scope.launch { snackbar.showSnackbar("剪贴板里没有文本") }
+                    } else {
+                        link = text
+                        val p = ShareLinkParser.parse(text)
+                        p?.pwd?.let { pwd = it }
+                        scope.launch {
+                            snackbar.showSnackbar(
+                                if (p == null) "已粘贴，但没识别出支持的分享链接"
+                                else "已识别：" + sharePlatformLabel(p.platform) +
+                                    (p.pwd?.let { "，提取码 $it" } ?: "（无需提取码）")
+                            )
+                        }
+                    }
+                }) { Text("从剪贴板粘贴") }
+                Spacer(Modifier.width(12.dp))
+                LinkRecognizeHint(link, Modifier.weight(1f))
+            }
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
@@ -102,6 +125,10 @@ fun ResolveScreen(services: AppServices, snackbar: SnackbarHostState, scope: Cor
                 Button(onClick = { r.resolve(link, pwd.ifBlank { null }) }, enabled = link.isNotBlank() && !r.loading) {
                     if (r.loading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                     Text("解析")
+                }
+                if (link.isNotBlank()) {
+                    Spacer(Modifier.width(4.dp))
+                    TextButton(onClick = { link = ""; pwd = "" }) { Text("清空") }
                 }
             }
         } else {
@@ -159,6 +186,41 @@ private suspend fun enqueue(services: AppServices, dl: ResolvedDownload) {
         platform = dl.platform,
         onComplete = { dl.cleanup() },
     )
+}
+
+/** 读取系统剪贴板文本（无文本/被占用时返回 null） */
+private fun clipboardText(): String? = runCatching {
+    val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+    clipboard.getData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
+}.getOrNull()
+
+/** 边输边提示：这段文本能不能识别、识别成哪个网盘、提取码是多少 */
+@Composable
+private fun LinkRecognizeHint(text: String, modifier: Modifier = Modifier) {
+    val parsed = remember(text) { if (text.isBlank()) null else ShareLinkParser.parse(text) }
+    val hint = when {
+        text.isBlank() -> "整段分享文案会自动拆出链接与提取码"
+        parsed != null -> "已识别：" + sharePlatformLabel(parsed.platform) +
+            (parsed.pwd?.let { "，提取码 $it" } ?: "（无需提取码）")
+        else -> "没识别出支持的分享链接（夸克 / UC / 迅雷 / 百度 / 139 / 123）"
+    }
+    Text(
+        text = hint,
+        modifier = modifier,
+        style = MaterialTheme.typography.bodySmall,
+        color = when {
+            text.isBlank() -> MaterialTheme.colorScheme.onSurfaceVariant
+            parsed != null -> MaterialTheme.colorScheme.primary
+            else -> MaterialTheme.colorScheme.error
+        },
+        maxLines = 2,
+    )
+}
+
+private fun sharePlatformLabel(p: SharePlatform): String = when (p) {
+    SharePlatform.QUARK -> "夸克网盘"; SharePlatform.UC -> "UC网盘"
+    SharePlatform.XUNLEI -> "迅雷网盘"; SharePlatform.BAIDU -> "百度网盘"
+    SharePlatform.C139 -> "139网盘"; SharePlatform.PAN123 -> "123云盘"
 }
 
 @Composable

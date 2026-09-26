@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +38,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -51,13 +57,42 @@ import com.yunx.desktop.ui.YunxIcons
 import kotlinx.coroutines.launch
 
 fun main() = application {
+    val services = remember { AppServices() }
+    val windowState = rememberWindowState(size = initialWindowSize(services.settings))
     Window(
-        onCloseRequest = ::exitApplication,
-        title = "YunX Desktop（云析 · 网盘解析下载）",
-        state = rememberWindowState(width = 1240.dp, height = 780.dp),
+        onCloseRequest = {
+            // 记住窗口尺寸，下次启动沿用
+            services.settings.windowWidth = windowState.size.width.value.toInt()
+            services.settings.windowHeight = windowState.size.height.value.toInt()
+            exitApplication()
+        },
+        title = "云析",
+        icon = remember { loadAppIcon()?.let { BitmapPainter(it) } },
+        state = windowState,
     ) {
-        AppRoot()
+        AppRoot(services)
     }
+}
+
+/** 窗口/任务栏图标：原项目 YunX 的 launcher 图标（AGPL-3.0，随包分发）。 */
+private fun loadAppIcon(): ImageBitmap? {
+    val stream = AppServices::class.java.getResourceAsStream("/yunx_icon.png") ?: return null
+    return runCatching {
+        org.jetbrains.skia.Image.makeFromEncoded(stream.use { it.readBytes() }).toComposeImageBitmap()
+    }.getOrNull()
+}
+
+/** 记忆的窗口尺寸；若超过当前屏幕可用尺寸（如高 DPI 小屏、或分辨率被改小）则按屏幕收敛，避免窗口超出屏幕。 */
+@Composable
+private fun initialWindowSize(settings: SettingsStore): DpSize {
+    val density = LocalDensity.current.density
+    val screen = java.awt.Toolkit.getDefaultToolkit().screenSize
+    val maxWidth = (screen.width / density * 0.92f).toInt()
+    val maxHeight = (screen.height / density * 0.90f).toInt()
+    return DpSize(
+        settings.windowWidth.coerceAtMost(maxWidth).dp,
+        settings.windowHeight.coerceAtMost(maxHeight).dp,
+    )
 }
 
 private enum class Tab(val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String) {
@@ -70,15 +105,21 @@ private enum class Tab(val icon: androidx.compose.ui.graphics.vector.ImageVector
 }
 
 @Composable
-fun AppRoot() {
-    val services = remember { AppServices() }
+fun AppRoot(services: AppServices) {
     LaunchedEffect(Unit) {
         services.taskDao.markInterruptedAsPaused()
     }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var tab by remember { mutableStateOf(Tab.RESOLVE) }
-    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    var tab by remember {
+        mutableStateOf(Tab.entries[services.settings.lastTab.coerceIn(0, Tab.entries.size - 1)])
+    }
+    LaunchedEffect(tab) { services.settings.lastTab = tab.ordinal }
+    val dark = when (services.settings.theme) {
+        "light" -> false
+        "dark" -> true
+        else -> isSystemInDarkTheme()
+    }
     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },

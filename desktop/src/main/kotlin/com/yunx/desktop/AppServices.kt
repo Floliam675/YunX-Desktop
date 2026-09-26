@@ -10,6 +10,7 @@ import com.yunx.desktop.app.CloudDriveController
 import com.yunx.desktop.app.DriveAccountStore
 import com.yunx.desktop.app.DriveLogin
 import com.yunx.desktop.app.ResolveController
+import androidx.compose.runtime.mutableStateOf
 import java.io.File
 
 /**
@@ -68,6 +69,31 @@ class SettingsStore(file: File) {
     var retryCount: Int
         get() = j.optInt("retry", 3).coerceIn(0, 10)
         set(v) { put("retry", v.coerceIn(0, 10)) }
+
+    /** 外观主题：system / light / dark（Compose 可观察，设置里切换后立即生效） */
+    private val themeState = mutableStateOf(
+        j.optString("theme").takeIf { it == "light" || it == "dark" } ?: "system"
+    )
+    val theme: String get() = themeState.value
+    fun setTheme(v: String) {
+        if (v != "light" && v != "dark" && v != "system") return
+        themeState.value = v
+        put("theme", v)
+    }
+
+    /** 上次停留的页面索引（下次启动恢复） */
+    var lastTab: Int
+        get() = j.optInt("last_tab", 0).coerceIn(0, 15)
+        set(v) { put("last_tab", v.coerceIn(0, 15)) }
+
+    /** 窗口尺寸记忆 */
+    var windowWidth: Int
+        get() = j.optInt("win_w", 1240).coerceIn(960, 4096)
+        set(v) { put("win_w", v.coerceIn(960, 4096)) }
+
+    var windowHeight: Int
+        get() = j.optInt("win_h", 780).coerceIn(600, 2160)
+        set(v) { put("win_h", v.coerceIn(600, 2160)) }
 
     fun threadsFor(platform: String): Int {
         if (platform == com.yunx.app.data.download.DownloadPlatform.XUNLEI) return 8

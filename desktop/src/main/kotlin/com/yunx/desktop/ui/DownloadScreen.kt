@@ -52,6 +52,13 @@ fun DownloadScreen(services: AppServices, snackbar: SnackbarHostState) {
             Spacer(Modifier.weight(1f))
             OutlinedButton(onClick = {
                 scope.launch {
+                    tasks.filter { it.status == DownloadTaskEntity.STATUS_DOWNLOADING || it.status == DownloadTaskEntity.STATUS_PENDING }
+                        .forEach { services.downloadManager.pause(it.id) }
+                }
+            }) { Text("全部暂停") }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(onClick = {
+                scope.launch {
                     tasks.filter { it.status == DownloadTaskEntity.STATUS_PAUSED || it.status == DownloadTaskEntity.STATUS_FAILED }
                         .forEach { services.downloadManager.start(it.id) }
                 }

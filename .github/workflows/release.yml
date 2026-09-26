@@ -1,10 +1,11 @@
 name: Release (portable build, optional code signing)
 
 # 触发：推送 v* 标签，或手动运行。
-#   git tag v0.2.0 && git push origin v0.2.0
+#   git tag v0.3.0 && git push origin v0.3.0
 #
-# 产物：YunX-Desktop-<version>-win64-portable.zip（未签名；若启用签名则为已签名版）
-#       （包内同时附带 Start-YunX.bat：使用包内已签名的 Java launcher 启动，供智能应用控制拦截的机器使用）
+# 产物：YunX-Desktop-<version>-win64-installer.exe（安装版，jpackage + WiX 3.14 生成）
+#       YunX-Desktop-<version>-win64-portable.zip（免安装便携包，含 Start-YunX.bat 备用启动方式）
+#       （未签名；若启用签名则为已签名版）
 #       SHA256.txt
 #
 # 可选代码签名（SignPath，开源可免费申请：https://signpath.org/）：
@@ -21,9 +22,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号（例如 0.2.0）'
+        description: '版本号（例如 0.3.0）'
         required: false
-        default: '0.2.0'
+        default: '0.3.0'
 
 permissions:
   contents: write
@@ -37,16 +38,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Guard - no legacy JavaFX sources
+        shell: pwsh
+        run: |
+          # WebLogin.kt (JavaFX WebView) was replaced by JCEF; if it is still tracked,
+          # the build fails with dozens of "Unresolved reference javafx" errors.
+          $stale = @(
+            "desktop/src/main/kotlin/com/yunx/desktop/ui/WebLogin.kt",
+            "desktop/src/main/kotlin/com/yunx/desktop/JcefProbe.kt",
+            "desktop/src/main/kotlin/com/yunx/desktop/JcefDiag.kt"
+          ) | Where-Object { Test-Path $_ }
+          if ($stale) {
+            $list = ($stale -join ", ")
+            throw "Stale files still tracked: $list. Remove them (git rm <file>) and push again."
+          }
+
       - name: Resolve version
         id: version
         shell: pwsh
         run: |
           $ref = "${{ github.ref_name }}"
           $ver = if ("$ref".StartsWith("v")) { "$ref".Substring(1) } else { "${{ github.event.inputs.version }}" }
-          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = "0.2.0" }
+          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = "0.3.0" }
           "version=$ver"            >> $env:GITHUB_OUTPUT
           "zip_name=YunX-Desktop-$ver-win64-portable.zip" >> $env:GITHUB_OUTPUT
                     Write-Host "version=$ver"
+
+      - name: Guard - version matches build.gradle.kts
+        shell: pwsh
+        run: |
+          # jpackage 不校验 app-image 版本（实测），所以 tag 与 packageVersion 不一致时
+          # 会打出"安装器写着 vX、程序关于页写着 vY"的错版包。这里直接拦下。
+          $declared = ([regex]::Match((Get-Content "desktop/build.gradle.kts" -Raw), 'packageVersion\s*=\s*"([^"]+)"')).Groups[1].Value
+          $tagged = "${{ steps.version.outputs.version }}"
+          if ($declared -ne $tagged) {
+            throw "Version mismatch: desktop/build.gradle.kts has packageVersion='$declared' but this run resolves '$tagged'. Bump packageVersion first."
+          }
+          Write-Host "version ok: $declared"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -90,10 +118,40 @@ jobs:
           New-Item -ItemType Directory -Path dist -Force | Out-Null
           tar.exe -a -c -f "dist/${{ steps.version.outputs.zip_name }}" -C "desktop/build/compose/binaries/main/app" "YunX Desktop"
 
+      - name: Install WiX Toolset 3.14 (jpackage needs it to build .exe installers)
+        shell: pwsh
+        run: |
+          $wix = "$env:RUNNER_TEMP\wix314"
+          curl.exe -sL -o "$env:RUNNER_TEMP\wix314.zip" `
+            https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip
+          Expand-Archive "$env:RUNNER_TEMP\wix314.zip" -DestinationPath $wix -Force
+          "$wix" >> $env:GITHUB_PATH
+
+      - name: Build installer (.exe, per-user)
+        shell: pwsh
+        run: |
+          # 直接用已注入文档/已签名 launcher 的 app-image 生成安装器，
+          # 这样安装版与便携版内容完全一致。升级用同一 upgrade-uuid。
+          $app = "desktop/build/compose/binaries/main/app/YunX Desktop"
+          $ver = "${{ steps.version.outputs.version }}"
+          jpackage --type exe `
+            --app-image "$app" `
+            --dest dist `
+            --name "YunX Desktop" `
+            --app-version $ver `
+            --description "YunX Desktop - network drive share parser and downloader (AGPL-3.0)" `
+            --vendor "Floliam675 (github.com/Floliam675/YunX-Desktop)" `
+            --copyright "Copyright (C) 2026 Floliam675 - AGPL-3.0 - upstream CYQawa/YunX" `
+            --win-per-user-install --win-dir-chooser --win-menu --win-menu-group "YunX Desktop" `
+            --win-upgrade-uuid 9f1c7a52-6f4b-4e2a-9c31-8b0d5e7a2f64 `
+            --temp "$env:RUNNER_TEMP\jpackage"
+          Rename-Item "dist/YunX Desktop-$ver.exe" "dist/YunX-Desktop-$ver-win64-installer.exe" -Force
+          Get-ChildItem dist | Select-Object Name, Length
+
       - name: Checksums
         shell: pwsh
         run: |
-          $lines = foreach ($f in Get-ChildItem dist -Filter *.zip | Sort-Object Name) {
+          $lines = foreach ($f in Get-ChildItem dist -File | Where-Object { $_.Extension -in '.zip', '.exe' } | Sort-Object Name) {
             $h = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
             "$h  $($f.Name)"
           }
@@ -163,7 +221,7 @@ jobs:
           draft: true
           generate_release_notes: true
           body: |
-            未签名的 Windows 便携包。若系统提示被拦截：
+            未签名的 Windows 安装包 / 便携包。若系统提示被拦截：
             - SmartScreen：点「更多信息 → 仍要运行」。
             - 智能应用控制（Smart App Control，无“仍要运行”）：双击包内的 Start-YunX.bat，
               它用包内已签名的 Java launcher 启动，无需安装任何东西（也无需关闭该功能）。

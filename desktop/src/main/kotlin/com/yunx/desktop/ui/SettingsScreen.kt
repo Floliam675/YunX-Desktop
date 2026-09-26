@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
@@ -51,6 +52,23 @@ fun SettingsScreen(services: AppServices, snackbar: SnackbarHostState) {
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         Text("设置", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(12.dp))
+
+        Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+            Column(Modifier.padding(14.dp)) {
+                Text("外观", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("system" to "跟随系统", "light" to "浅色", "dark" to "深色").forEach { (value, label) ->
+                        FilterChip(
+                            selected = services.settings.theme == value,
+                            onClick = { services.settings.setTheme(value) },
+                            label = { Text(label) },
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
 
         SettingSlider("通用分片线程数", threads, 1, 64) { v -> threads = v; services.settings.setThreads("", v) }
         SettingSlider("最大同时下载任务数", maxConc, 1, 10) { v -> maxConc = v; services.settings.maxConcurrent = v }

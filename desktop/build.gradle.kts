@@ -28,7 +28,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Exe)
             packageName = "YunX Desktop"
-            packageVersion = "0.2.0"
+            packageVersion = "0.3.0"
             // exe 元数据（文件属性 → 详细信息 可见）；注意：这不等于代码签名，
             // Windows SmartScreen / 智能应用控制仍会按"未签名"处理。
             // 注意：jpackage 在 Windows 下对非 ASCII 元数据会报 "Input length = 1"，这里保持纯英文
@@ -36,6 +36,8 @@ compose.desktop {
             vendor = "Floliam675 (github.com/Floliam675/YunX-Desktop)"
             copyright = "Copyright (C) 2026 Floliam675 - AGPL-3.0 - upstream CYQawa/YunX"
             windows {
+                // 原项目 YunX 的 launcher 图标（AGPL-3.0）转成的多尺寸 ico：exe 与安装器都用它
+                iconFile.set(rootProject.file("packaging/icon.ico"))
                 menuGroup = "YunX Desktop"
                 shortcut = false
                 dirChooser = true

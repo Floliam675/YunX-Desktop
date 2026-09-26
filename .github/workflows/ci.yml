@@ -12,6 +12,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Guard - no legacy JavaFX sources
+        shell: pwsh
+        run: |
+          # WebLogin.kt (JavaFX WebView) was replaced by JCEF; if it is still tracked,
+          # the build fails with dozens of "Unresolved reference javafx" errors.
+          $stale = @(
+            "desktop/src/main/kotlin/com/yunx/desktop/ui/WebLogin.kt",
+            "desktop/src/main/kotlin/com/yunx/desktop/JcefProbe.kt",
+            "desktop/src/main/kotlin/com/yunx/desktop/JcefDiag.kt"
+          ) | Where-Object { Test-Path $_ }
+          if ($stale) {
+            $list = ($stale -join ", ")
+            throw "Stale files still tracked: $list. Remove them (git rm <file>) and push again."
+          }
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
