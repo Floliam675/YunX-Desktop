@@ -145,9 +145,19 @@ jobs:
             --win-per-user-install --win-dir-chooser --win-menu --win-menu-group "YunX Desktop" `
             --win-upgrade-uuid 9f1c7a52-6f4b-4e2a-9c31-8b0d5e7a2f64 `
             --temp "$env:RUNNER_TEMP\jpackage"
-          Rename-Item "dist/YunX Desktop-$ver.exe" "dist/YunX-Desktop-$ver-win64-installer.exe" -Force
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          $dist = (Resolve-Path dist).Path
+          $produced = Join-Path $dist "YunX Desktop-$ver.exe"
+          if (-not (Test-Path -LiteralPath $produced)) {
+            Write-Host 'dist after jpackage:'
+            Get-ChildItem dist | Select-Object Name, Length
+            throw "jpackage did not produce the expected installer: $produced"
+          }
+          # 必须用 Move-Item -LiteralPath：Rename-Item 的 -NewName 不能带目录，
+          # pwsh 7（GitHub runner）会报 "Cannot rename the specified target, because it
+          # represents a path or device name"，而 Windows PowerShell 5.1 能过，本地试不出来。
+          Move-Item -LiteralPath $produced -Destination (Join-Path $dist "YunX-Desktop-$ver-win64-installer.exe") -Force
           Get-ChildItem dist | Select-Object Name, Length
-
       - name: Checksums
         shell: pwsh
         run: |
