@@ -26,6 +26,8 @@ class AppServices {
     val settings = SettingsStore(File(dataDir(), "settings.json"))
     val accountStore = DriveAccountStore(File(dataDir(), "accounts.json"))
     val login = DriveLogin(accountStore)
+    /** 网页登录识别到登录态后的「是否保存」确认闸门（UI 弹框，登录线程等待结果） */
+    val loginConfirm = com.yunx.desktop.app.LoginConfirmGate()
     val resolver = ResolveController(login)
     val cloud = CloudDriveController(login) { url, name, headers, size, platform ->
         downloadManager.enqueue(url, name, headers, size, platform)

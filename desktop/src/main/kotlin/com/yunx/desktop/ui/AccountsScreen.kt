@@ -128,6 +128,8 @@ private fun launchWebLogin(
         },
         onStatus = { msg -> scope.launch { snackbar.showSnackbar(msg) } },
         onError = { msg -> scope.launch { snackbar.showSnackbar(msg) } },
+        // 识别到登录态后不直接落库，先问用户：保存并关闭 / 继续登录
+        confirm = services.loginConfirm,
     ).show()
 }
 

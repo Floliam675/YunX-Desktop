@@ -18,6 +18,7 @@
 package com.yunx.desktop.ui
 
 import com.yunx.desktop.AppServices
+import com.yunx.desktop.app.LoginConfirm
 import java.io.File
 import java.net.URI
 import java.net.http.HttpClient
@@ -132,6 +133,8 @@ class EdgeCdpLogin(
     private val onCredential: (String) -> Unit,
     private val onStatus: (String) -> Unit = {},
     private val onError: (String) -> Unit = {},
+    /** 登录态确认交互；传 null 表示不与用户确认，检测到有效登录态即保存（探针/测试用） */
+    private val confirm: LoginConfirm? = null,
 ) {
     fun show() {
         if (!LOGIN_IN_PROGRESS.compareAndSet(false, true)) {
@@ -140,6 +143,10 @@ class EdgeCdpLogin(
         }
         Thread({ runLogin() }, "yunx-edge-login").apply { isDaemon = true }.start()
     }
+
+    /** 用户至少选过一次「继续登录」：窗口关闭时据此提示"未保存" */
+    @Volatile
+    private var declinedOnce = false
 
     private fun runLogin() {
         var process: Process? = null
@@ -164,11 +171,13 @@ class EdgeCdpLogin(
             onStatus("$windowTitle：请在浏览器窗口完成登录，登录成功后会自动关闭")
 
             val credential = poll(cdp)
-            if (credential != null) {
-                onCredential(credential)
-                onStatus("$windowTitle：已获取登录态 ✅")
-            } else {
-                onStatus("$windowTitle：窗口已关闭，未获取到登录态")
+            when {
+                credential != null -> {
+                    onCredential(credential)
+                    onStatus("$windowTitle：已保存登录态 ✅")
+                }
+                declinedOnce -> onStatus("$windowTitle：窗口已关闭，登录态未保存")
+                else -> onStatus("$windowTitle：窗口已关闭，未获取到登录态")
             }
         } catch (t: Throwable) {
             onError("网页登录失败：" + (t.message ?: t.javaClass.simpleName))
@@ -236,14 +245,31 @@ class EdgeCdpLogin(
         return null
     }
 
-    /** 轮询直到拿到有效凭据（返回凭证）或被用户关窗（返回 null）。 */
+    /**
+     * 轮询直到拿到有效凭据（返回凭证）或被用户关窗（返回 null）。
+     * 弹框期间**不阻塞**：继续检测登录态变化，并把弹框里的凭证刷新为最新值，
+     * 这样用户点「保存并关闭」时保存的是当前最新的登录态。
+     */
     private fun poll(cdp: Cdp): String? {
         val cookiePairs = LinkedHashMap<String, String>()
+        var askedFor: Int? = null
         while (!Thread.currentThread().isInterrupted) {
             Thread.sleep(POLL_MS)
             if (cdp.isClosed) return null
             val cred = if (storageKey != null) readLocalStorage(cdp, storageKey) else readCookies(cdp, cookiePairs)
-            if (!cred.isNullOrBlank() && isValidCredential(cred)) return cred
+            if (cred.isNullOrBlank() || !isValidCredential(cred)) continue
+
+            val gate = confirm ?: return cred        // 无确认交互：直接保存
+
+            gate.takeIfSaveRequested()?.let { return it }   // 用户点了「保存并关闭」
+            if (gate.consumeDecline()) { declinedOnce = true; continue }  // 点了「继续登录」：同一份登录态不再追问
+
+            if (askedFor != cred.hashCode()) {
+                askedFor = cred.hashCode()
+                gate.offer(windowTitle, cred)        // 首次识别 / 登录态变化 → （重新）询问
+            } else {
+                gate.refresh(cred)                   // 弹框期间保持最新
+            }
         }
         return null
     }

@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
@@ -27,6 +29,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -70,7 +73,16 @@ fun main() = application {
         icon = remember { loadAppIcon()?.let { BitmapPainter(it) } },
         state = windowState,
     ) {
-        AppRoot(services)
+        AppRoot(
+            services = services,
+            // 确认框出现时把窗口提到最前并临时置顶：此时用户正在浏览器里登录，看不到 App
+            onConfirmVisible = { visible ->
+                runCatching {
+                    window.isAlwaysOnTop = visible
+                    if (visible) window.toFront()
+                }
+            },
+        )
     }
 }
 
@@ -105,7 +117,7 @@ private enum class Tab(val icon: androidx.compose.ui.graphics.vector.ImageVector
 }
 
 @Composable
-fun AppRoot(services: AppServices) {
+fun AppRoot(services: AppServices, onConfirmVisible: (Boolean) -> Unit = {}) {
     LaunchedEffect(Unit) {
         services.taskDao.markInterruptedAsPaused()
     }
@@ -166,6 +178,25 @@ fun AppRoot(services: AppServices) {
                     }
                 }
             }
+        }
+        // 网页登录识别到登录态后，先由用户决定：保存并关闭 / 继续登录
+        val confirmPending = services.loginConfirm.pending.value
+        val confirmDecision = services.loginConfirm.decision.value
+        val confirmVisible = confirmPending != null && confirmDecision == null
+        LaunchedEffect(confirmVisible) { onConfirmVisible(confirmVisible) }
+        if (confirmVisible) {
+            AlertDialog(
+                onDismissRequest = { /* 必须二选一 */ },
+                title = { Text("已识别到登录态") },
+                text = {
+                    Text(
+                        confirmPending!!.title + "：检测到已登录。要保存并关闭登录窗口吗？\n" +
+                            "选择「继续登录」则不保存，浏览器窗口保持打开。"
+                    )
+                },
+                confirmButton = { Button(onClick = { services.loginConfirm.answer(true) }) { Text("保存并关闭") } },
+                dismissButton = { TextButton(onClick = { services.loginConfirm.answer(false) }) { Text("继续登录") } },
+            )
         }
     }
 }
