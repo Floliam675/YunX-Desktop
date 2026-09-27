@@ -105,7 +105,7 @@ YunX（云析）是一款 Android 网盘分享链接解析与高速下载应用�
   任何修改与再分发请遵守 [LICENSE](./LICENSE)。
 - **质量与责任**：AI 生成代码可能含有缺陷或安全隐患，欢迎通过 Issues / Pull Requests 审查指正；
   使用者请自行评估并承担风险（另见下方免责声明）。
-- **所用 AI**：DeepSeek v4 Flash（deepseek-v4-flash）——DeepSeek 出品的大语言模型，用于代码生成、重构与排错。
+- **所用 AI**：DeepSeek v4.1 Flash（deepseek-v4.1-flash）——DeepSeek 出品的大语言模型，用于代码生成、重构与排错。
 
 ## 免责声明与许可
 
