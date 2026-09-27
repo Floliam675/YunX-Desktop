@@ -79,17 +79,6 @@ YunX（云析）是一款 Android 网盘分享链接解析与高速下载应用�
 
 无论用哪种方式，建议先用发布页的 `SHA256.txt` 校验下载文件完整性。
 
-### 关于代码签名（根治方案）
-
-要让所有 Windows 机器直接双击运行、且 SmartScreen/智能应用控制不再拦截，只能做 Authenticode 代码签名：
-
-- **开源免费**：[SignPath Foundation](https://signpath.org/) 为开源项目提供免费代码签名，可与 GitHub Actions 集成（需申请、项目需符合其开源政策）。
-- **付费证书**：OV 证书（约 200–400 美元/年，SmartScreen 需逐步累积信誉）、EV 证书（约 300–600 美元/年，可较快建立信誉；现多为云签名/硬件令牌形式）。
-- **微软云签名**：[Azure Trusted Signing](https://azure.microsoft.com/products/trusted-signing) 价格较低，但对个人开发者有资质门槛（通常要求 3 年企业历史）。
-- 免费/自签名证书**不能**解决问题：SmartScreen 与智能应用控制不信任自签证书。
-
-> 说明：exe 的「文件属性 → 详细信息」里的公司/版权信息（当前为 `Floliam675 (github.com/Floliam675/YunX-Desktop)`）只是元数据展示，与上述拦截判定无关。
-
 ## 登录方式
 
 每平台提供「网页登录」按钮：点击后在应用内打开官方网页版登录
@@ -129,91 +118,6 @@ yunx-desktop/
 - OkHttp（网络 + 分片下载）、org.json
 - 持久化：JSON 文件（账号 / 下载任务 / 设置）+ AES-GCM 密钥文件（凭据），替代 Room
 
-## 从源码构建
-
-要求：JDK 17+；若要打 **exe 安装器**，还需 [WiX Toolset 3.14](https://github.com/wixtoolset/wix3/releases) 在 `PATH` 中。
-
-```powershell
-.\gradlew.bat :desktop:run                    # 直接运行
-.\gradlew.bat :core:test                      # 单元测试
-.\gradlew.bat :desktop:createDistributable    # 生成免安装目录（app-image）
-```
-
-本地打发布包（与 CI 的步骤一致）：
-
-```powershell
-$app = "desktop/build/compose/binaries/main/app/YunX Desktop"
-
-# 1) 生成 app-image 并瘦身：裁剪 Chromium 语言包（natives jar 134MB -> 123MB）
-.\gradlew.bat :desktop:createDistributable
-powershell -ExecutionPolicy Bypass -File tools/trim-jcef-locales.ps1 -AppImageDir $app
-
-# 2) 注入文档与已签名的 Java launcher（详见 .github/workflows/release.yml 的 Inject / Bundle 两步）
-
-# 3) 免安装便携 zip
-tar.exe -a -c -f dist\YunX-Desktop-0.3.0-win64-portable.zip -C (Split-Path $app) "YunX Desktop"
-
-# 4) exe 安装器（直接把上面那份 app-image 包成安装器，两者内容一致）
-jpackage --type exe --app-image $app --dest dist `
-  --name "YunX Desktop" --app-version 0.3.0 `
-  --win-per-user-install --win-dir-chooser --win-menu --win-menu-group "YunX Desktop" `
-  --win-upgrade-uuid 9f1c7a52-6f4b-4e2a-9c31-8b0d5e7a2f64 --temp tmp\jpackage
-```
-
-## 持续集成与自动发布
-
-仓库自带两个 GitHub Actions 工作流（`.github/workflows/`）：
-
-- **`ci.yml`**：push / PR 时编译 `:desktop` 并跑 `:core:test`。
-- **`release.yml`**：推送 `v*` 标签（或手动触发）时自动：生成免安装 app-image → 裁剪 Chromium 语言包 → 放入已签名的 JRE launcher 与 `Start-YunX.bat` →
-  注入 `LICENSE.txt` / `SOURCE.txt` / `README.txt` → 打出便携 zip 与 **exe 安装器**（jpackage + WiX Toolset 3.14）→
-  计算 `SHA256.txt` →（可选签名）→ 创建 GitHub Release（默认草稿）。
-  > 安装器直接用上面那份 app-image 生成，所以安装版与便携版内容完全一致；构建机会自动下载 WiX，用户侧不需要。
-  > 另有版本一致性守卫：tag 必须与 `desktop/build.gradle.kts` 的 `packageVersion` 相同，否则工作流直接失败（jpackage 自身不校验该版本号）。
-
-发布一个新版本：
-
-```powershell
-git tag v0.3.0
-git push origin v0.3.0
-```
-
-### 把源码同步到 git 仓库（避免残留旧文件导致 CI 失败）
-
-如果仓库里出现「新构建脚本 + 已删除的旧源码」这种混搭，CI 会编译失败（例如历史上被移除的
-`ui/WebLogin.kt` 会报一堆 `Unresolved reference: javafx`）。两种做法：
-
-```powershell
-# 方式一：只删掉废弃文件
-git rm desktop/src/main/kotlin/com/yunx/desktop/ui/WebLogin.kt
-git commit -m "chore: drop legacy JavaFX WebLogin (replaced by JCEF)"
-git push
-
-# 方式二（推荐）：把整个源码树镜像到工作区，自动删除多余文件
-powershell -ExecutionPolicy Bypass -File tools/mirror-to-git.ps1 -GitWorkTree "D:\src\YunX-Desktop" -DryRun  # 先预览
-powershell -ExecutionPolicy Bypass -File tools/mirror-to-git.ps1 -GitWorkTree "D:\src\YunX-Desktop"          # 再执行
-```
-
-> `mirror-to-git.ps1` 使用 `robocopy /MIR`，会删除工作区里“本树中不存在”的文件（`.git` / `build` /
-> `.gradle` / `.kotlin` / `.idea` 已排除）；`-DryRun` 只预览不修改。CI 里也加了前置检查，遇到这类残留
-> 文件会直接给出「Stale files still tracked: …」的明确报错。
-
-### 启用免费代码签名（SignPath，开源项目）
-
-1. 到 [signpath.org](https://signpath.org/) 申请开源项目签名，拿到 organization id、project slug、
-   signing policy slug、artifact configuration slug 与 API Token；
-2. 仓库 Settings → Secrets and variables → Actions 中配置：
-   - **Variables**：`SIGNPATH_ENABLED=true`、`SIGNPATH_ORG_ID`、`SIGNPATH_PROJECT_SLUG`、
-     `SIGNPATH_POLICY_SLUG`、`SIGNPATH_ARTIFACT_CONFIG_SLUG`；
-   - **Secrets**：`SIGNPATH_API_TOKEN`；
-3. 之后每次打标签，`sign` 任务会把未签名工件提交给 SignPath 并取回签名后的 zip；未配置这些变量时
-   签名任务自动跳过，仍产出未签名包。
-
-> 工件配置示例见 `packaging/signpath-artifact-configuration.xml`（对 zip 内的 `YunX Desktop.exe` 做
-> Authenticode 签名）；实际以 SignPath 后台生成的配置为准。
-> 说明：免费/自签名证书无法解决 SmartScreen 与智能应用控制（Smart App Control）的拦截，必须使用
-> 受信任 CA 签发的证书（SignPath/OV/EV 或 Azure Trusted Signing）。
-
 ## AI 生成声明
 
 本项目的**桌面移植工程**（YunX Desktop）由维护者提出需求并负责验证，在 **AI 编码助手 DeepSeek v4 Flash（deepseek-v4-flash）** 的辅助下开发：
@@ -222,7 +126,7 @@ powershell -ExecutionPolicy Bypass -File tools/mirror-to-git.ps1 -GitWorkTree "D
   实现、Windows 打包与大量调试修复工作，主要由 AI 生成候选代码，经维护者审查、测试验证后合入；
   维护者负责需求定义、测试、打包与发布。
 - **上游归属不受影响**：本项目复用的网盘协议、分享解析与下载引擎逻辑源自
-  [CYQawa/YunX](https://github.com/CYQawa/YunX)（Android 版，AGPL-3.0，人类作者），
+  [CYQawa/YunX](https://github.com/CYQawa/YunX)（Android 版，AGPL-3.0），
   其版权与署名归原作者所有，详见 [PORTING.md](./PORTING.md)；本声明不覆盖、不减损上游作者的权利。
 - **许可一致**：AI 生成或辅助修改的代码与全仓库一致，均以 GNU AGPL-3.0 发布，不额外主张版权；
   任何修改与再分发请遵守 [LICENSE](./LICENSE)。
