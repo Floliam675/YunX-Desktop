@@ -165,8 +165,8 @@ class EdgeCdpLogin(
                 onError("无法连接浏览器调试端口（$port）：请关闭 YunX 打开的 Edge 窗口后重试")
                 return
             }
-            cdp.call("Page.enable")
-            cdp.call("Network.enable")
+            // 刻意不 enable Page/Network 域：实测 enable 后页面每 10 秒会推来几十条事件（页面繁忙时更多），
+            // 而我们只需要「导航 + 取该站 cookie + 读 localStorage」，这些命令无须 enable 即可用。
             cdp.call("Page.navigate", JSONObject().put("url", url))
             onStatus("$windowTitle：请在浏览器窗口完成登录，登录成功后会自动关闭")
 
@@ -274,9 +274,13 @@ class EdgeCdpLogin(
         return null
     }
 
-    /** Cookie 型：取该站点全域 Cookie（含 HttpOnly —— 页面 JS 拿不到，CDP 网络层可以）。 */
+    /** Cookie 型：只取该站点需要的 cookie（含 HttpOnly —— 页面 JS 拿不到，CDP 网络层可以）。
+     *  用 Network.getCookies(urls) 而不是 getAllCookies：后者会返回整个浏览器所有域名的 cookie
+     *  （实测 90 条 / 27 KB / 5 ms，且会碰全站 cookie 库），按 URL 取只要 1 ms、约 2 KB。 */
     private fun readCookies(cdp: Cdp, sink: LinkedHashMap<String, String>): String? {
-        val result = cdp.call("Network.getAllCookies")?.optJSONObject("result")?.optJSONArray("cookies") ?: return null
+        val urls = JSONArray().put(url).put("https://" + siteDomain() + "/")
+        val result = cdp.call("Network.getCookies", JSONObject().put("urls", urls))
+            ?.optJSONObject("result")?.optJSONArray("cookies") ?: return null
         for (i in 0 until result.length()) {
             val c = result.getJSONObject(i)
             if (!c.optString("domain").endsWith(siteDomain(), ignoreCase = true)) continue
@@ -321,7 +325,7 @@ class EdgeCdpLogin(
     }
 
     private companion object {
-        const val POLL_MS = 1500L
+        const val POLL_MS = 2500L
         const val MAX_COOKIE_PAIRS = 300
     }
 }
