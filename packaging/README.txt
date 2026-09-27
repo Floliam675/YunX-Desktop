@@ -1,6 +1,6 @@
 ======================================================
 YunX Desktop（云析桌面版）· Windows 免安装便携版
-版本：见本包所属的 Release 标签（如 v0.3.0）
+版本：见本包所属的 Release 标签（如 v0.4.0）
 项目主页 / 源码：https://github.com/Floliam675/YunX-Desktop
 ======================================================
 
@@ -9,11 +9,11 @@ YunX（云析）是一款网盘分享链接解析与高速下载工具。本目�
 "YunX Desktop.exe" 即可运行。
 
 【使用说明】
-- 首次启动会把内置 Chromium 内核解包到 %USERPROFILE%\.jcef-bundle
-  （数秒，无需联网）；之后秒开。
+- 网页登录会调用本机已安装的 Microsoft Edge（Win10/11 自带），不需要额外下载浏览器；
+  登录用的专用配置目录在下方数据目录内，仅本机可访问。
 - 应用数据保存在 %USERPROFILE%\.yunx-desktop（账号/任务/设置），
   下载默认到系统 Downloads。
-- 账号登录：网盘账号页 ->「网页登录」（内置 Chromium 打开官方登录页，
+- 账号登录：网盘账号页 ->「网页登录」（用本机 Edge 打开官方登录页，
   完成后自动抓取 Cookie / localStorage 登录态，含 HttpOnly 字段）；
   也可手动粘贴 Cookie / JWT；迅雷额外支持短信验证码登录。
 - 主要功能：分享链接解析（夸克/UC/迅雷/百度/139/123）、文件浏览、
@@ -40,7 +40,7 @@ YunX（云析）是一款网盘分享链接解析与高速下载工具。本目�
   https://github.com/CYQawa/YunX （版权归原作者所有）
 - 本版本为第三方维护的桌面移植版，非原项目官方发布。
 - 源码获取与再分发义务说明见随附 SOURCE.txt。
-- 第三方组件（JCEF/Chromium、Kotlin、Compose、OkHttp 等）遵从各自许可；
+- 第三方组件（Kotlin、Compose、OkHttp 等）遵从各自许可；
   列表见项目仓库 THIRD_PARTY_NOTICES.md。
 
 【AI 生成声明】

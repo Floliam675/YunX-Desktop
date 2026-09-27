@@ -20,6 +20,8 @@ jobs:
           $stale = @(
             "desktop/src/main/kotlin/com/yunx/desktop/ui/WebLogin.kt",
             "desktop/src/main/kotlin/com/yunx/desktop/JcefProbe.kt",
+            "desktop/src/main/kotlin/com/yunx/desktop/JcefLoginProbe.kt",
+            "desktop/src/main/kotlin/com/yunx/desktop/ui/JcefWebLogin.kt",
             "desktop/src/main/kotlin/com/yunx/desktop/JcefDiag.kt"
           ) | Where-Object { Test-Path $_ }
           if ($stale) {

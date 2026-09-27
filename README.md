@@ -17,8 +17,6 @@ YunX（云析）是一款 Android 网盘分享链接解析与高速下载应用�
 - [登录方式](#登录方式)
 - [数据与隐私](#数据与隐私)
 - [项目结构](#项目结构)
-- [从源码构建](#从源码构建)
-- [持续集成与自动发布](#持续集成与自动发布)
 - [AI 生成声明](#ai-生成声明)
 - [免责声明与许可](#免责声明与许可)
 
@@ -35,7 +33,7 @@ YunX（云析）是一款 Android 网盘分享链接解析与高速下载应用�
 **云盘与账号**
 
 - 云盘浏览：登录账号后浏览个人网盘（根/子目录、面包屑），单文件下载、**文件夹递归下载（保持目录结构）**
-- 网盘登录三种方式：① 手动粘贴 Cookie / JWT；② **迅雷短信验证码登录**；③ **网页登录**（内嵌 Chromium/JCEF，
+- 网盘登录三种方式：① 手动粘贴 Cookie / JWT；② **迅雷短信验证码登录**；③ **网页登录**（借用本机 Edge，
   登录后自动抓取登录态，含 HttpOnly Cookie / localStorage token），凭据本地持久化
 
 **界面**
@@ -56,7 +54,7 @@ YunX（云析）是一款 Android 网盘分享链接解析与高速下载应用�
 
 **系统要求**：Windows 10 / 11（x64）。两种版本都**内置 Java 运行时，无需另行安装 Java**。
 
-**首次启动**：会把内置的 Chromium 内核解包到 `%USERPROFILE%\.jcef-bundle`（几秒，无需联网），之后秒开。
+**首次启动**：无需解包任何内核；点「网页登录」时会调用本机已安装的 Microsoft Edge（Win10/11 自带），不额外下载浏览器。
 
 - 若系统提示被拦截（尤其“智能应用控制”），两种版本都可改用目录内的 **Start-YunX.bat**：它用自带、由 Java
   厂商数字签名的 java launcher 启动同一程序，**无需安装 Java**，详见下方常见问题。
@@ -82,7 +80,7 @@ YunX（云析）是一款 Android 网盘分享链接解析与高速下载应用�
 ## 登录方式
 
 每平台提供「网页登录」按钮：点击后在应用内打开官方网页版登录
-（**内嵌 Chromium / JCEF，windowed 模式**），用户完成登录后**自动检测并保存**：
+（**借用本机已安装的 Edge，经 DevTools Protocol 驱动**），用户完成登录后**自动检测并保存**：
 
 - 夸克 / UC / 百度 / 139：抓取登录后浏览器实际发送的 Cookie（经请求/响应网络层捕获，
   含 HttpOnly 字段，如百度 BDUSS），命中平台判定条件即保存并关闭窗口；
@@ -98,7 +96,7 @@ YunX（云析）是一款 Android 网盘分享链接解析与高速下载应用�
 | 内容 | 位置 |
 | --- | --- |
 | 账号凭据（AES-GCM 加密）· 下载任务 · 设置 | `%USERPROFILE%\.yunx-desktop` |
-| 内置 Chromium 内核（首次启动解包） | `%USERPROFILE%\.jcef-bundle` |
+| 网页登录用的 Edge 配置目录（仅本机可访问，缓存已封顶） | `%USERPROFILE%\.yunx-desktop\edge-login-profile` |
 | 下载的文件 | 系统 `Downloads` 目录 |
 
 - 所有数据仅保存在本机，不上传任何服务器；网盘凭据只用于直连对应网盘官方接口。
@@ -111,7 +109,7 @@ yunx-desktop/
 ├─ core/     纯 JVM 业务逻辑（从原项目移植）：网络 API ×6、分享解析、分片/HLS 下载器、
 │            Range/路径策略、android.util(Base64/Log) JVM 兼容桩
 └─ desktop/  Compose Multiplatform Desktop UI：解析页 / 下载页 / 云盘 / 网盘账号 / 设置 +
-             CloudDriveController（云盘浏览/递归下载）+ 内嵌 Chromium(JCEF, windowed) 网页登录
+             CloudDriveController（云盘浏览/递归下载）+ 借用本机 Edge(DevTools Protocol) 网页登录
 ```
 
 - Kotlin 2.2 + Compose Multiplatform 1.8.2 + Material3
@@ -122,7 +120,7 @@ yunx-desktop/
 
 本项目的**桌面移植工程**（YunX Desktop）由维护者提出需求并负责验证，在 **AI 编码助手 DeepSeek v4 Flash（deepseek-v4-flash）** 的辅助下开发：
 
-- 工程搭建、Compose Multiplatform 界面、解析/下载/云盘/账号流程整合、网页登录（内嵌 Chromium/JCEF）
+- 工程搭建、Compose Multiplatform 界面、解析/下载/云盘/账号流程整合、网页登录（借用本机 Edge / CDP）
   实现、Windows 打包与大量调试修复工作，主要由 AI 生成候选代码，经维护者审查、测试验证后合入；
   维护者负责需求定义、测试、打包与发布。
 - **上游归属不受影响**：本项目复用的网盘协议、分享解析与下载引擎逻辑源自

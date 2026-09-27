@@ -59,7 +59,7 @@ fun AccountsScreen(services: AppServices, snackbar: SnackbarHostState) {
                     drive = d,
                     account = acc,
                     onLogin = { loginDrive = d },
-                    onWebLogin = { launchJcefLogin(services, d, scope, snackbar) },
+                    onWebLogin = { launchWebLogin(services, d, scope, snackbar) },
                     onLogout = {
                         scope.launch { services.login.logout(d.name); snackbar.showSnackbar(d.label + " 已退出登录") }
                     },
@@ -103,7 +103,7 @@ private data class WebLoginSpec(
     val title: String,
 )
 
-private fun launchJcefLogin(
+private fun launchWebLogin(
     services: AppServices, d: DriveId, scope: CoroutineScope, snackbar: SnackbarHostState,
 ) {
     val (url, storageKey, isValid, title) = when (d) {
@@ -114,13 +114,21 @@ private fun launchJcefLogin(
         DriveId.PAN123 -> WebLoginSpec(Pan123Constants.WEB_LOGIN_URL, Pan123Constants.LOCAL_STORAGE_TOKEN_KEY, { c: String -> c.isNotBlank() }, "123云盘登录")
         else -> return
     }
-    val win = JcefWebLogin(title, url, storageKey, isValid) { credential ->
-        scope.launch {
-            val outcome = services.login.save(d.name, mapOf("raw" to credential))
-            snackbar.showSnackbar(outcome.message)
-        }
-    }
-    win.show()
+    // 借本机 Edge + CDP 取登录态（不再内嵌 Chromium）；失败时提示用户改用手动粘贴
+    EdgeCdpLogin(
+        windowTitle = title,
+        url = url,
+        storageKey = storageKey,
+        isValidCredential = isValid,
+        onCredential = { credential ->
+            scope.launch {
+                val outcome = services.login.save(d.name, mapOf("raw" to credential))
+                snackbar.showSnackbar(outcome.message)
+            }
+        },
+        onStatus = { msg -> scope.launch { snackbar.showSnackbar(msg) } },
+        onError = { msg -> scope.launch { snackbar.showSnackbar(msg) } },
+    ).show()
 }
 
 @Composable

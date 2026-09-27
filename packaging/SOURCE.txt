@@ -19,7 +19,6 @@ YunX Desktop 源码获取说明（对应本二进制：<VERSION>）
   gradlew :desktop:createDistributable    # 生成免安装目录
   将 desktop/build/compose/binaries/main/app/"YunX Desktop"
   压缩为 zip 即得到便携版。
-  可选瘦身：tools/trim-jcef-locales.ps1 裁剪 Chromium 语言包。
 
 提醒：对 AGPL 软件进行修改与再分发时，须保留本声明与许可、向接收者提供
 对应源码；网络远程使用（若提供在线服务）同样适用 AGPL 第 13 节。

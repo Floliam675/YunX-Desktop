@@ -1,7 +1,7 @@
 name: Release (portable build, optional code signing)
 
 # 触发：推送 v* 标签，或手动运行。
-#   git tag v0.3.0 && git push origin v0.3.0
+#   git tag v0.4.0 && git push origin v0.4.0
 #
 # 产物：YunX-Desktop-<version>-win64-installer.exe（安装版，jpackage + WiX 3.14 生成）
 #       YunX-Desktop-<version>-win64-portable.zip（免安装便携包，含 Start-YunX.bat 备用启动方式）
@@ -22,9 +22,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号（例如 0.3.0）'
+        description: '版本号（例如 0.4.0）'
         required: false
-        default: '0.3.0'
+        default: '0.4.0'
 
 permissions:
   contents: write
@@ -46,6 +46,8 @@ jobs:
           $stale = @(
             "desktop/src/main/kotlin/com/yunx/desktop/ui/WebLogin.kt",
             "desktop/src/main/kotlin/com/yunx/desktop/JcefProbe.kt",
+            "desktop/src/main/kotlin/com/yunx/desktop/JcefLoginProbe.kt",
+            "desktop/src/main/kotlin/com/yunx/desktop/ui/JcefWebLogin.kt",
             "desktop/src/main/kotlin/com/yunx/desktop/JcefDiag.kt"
           ) | Where-Object { Test-Path $_ }
           if ($stale) {
@@ -59,7 +61,7 @@ jobs:
         run: |
           $ref = "${{ github.ref_name }}"
           $ver = if ("$ref".StartsWith("v")) { "$ref".Substring(1) } else { "${{ github.event.inputs.version }}" }
-          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = "0.3.0" }
+          if ([string]::IsNullOrWhiteSpace($ver)) { $ver = "0.4.0" }
           "version=$ver"            >> $env:GITHUB_OUTPUT
           "zip_name=YunX-Desktop-$ver-win64-portable.zip" >> $env:GITHUB_OUTPUT
                     Write-Host "version=$ver"
@@ -87,11 +89,6 @@ jobs:
 
       - name: Build app image (portable, no installer)
         run: .\gradlew.bat :desktop:createDistributable --console=plain
-
-      - name: Trim JCEF locale packs (slimming)
-        shell: pwsh
-        run: |
-          ./tools/trim-jcef-locales.ps1 -AppImageDir "desktop/build/compose/binaries/main/app/YunX Desktop"
 
       - name: Inject license / source / readme into package
         shell: pwsh
