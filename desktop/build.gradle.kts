@@ -27,7 +27,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Exe)
             packageName = "YunX Desktop"
-            packageVersion = "0.4.6"
+            packageVersion = "0.4.7"
             // 网页登录用 JDK 的 java.net.http 连本机 Edge 的调试端口；jlink 默认不含该模块，必须显式保留
             modules("java.net.http")
             // exe 元数据（文件属性 → 详细信息 可见）；注意：这不等于代码签名，
