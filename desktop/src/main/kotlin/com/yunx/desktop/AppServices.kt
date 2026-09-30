@@ -130,6 +130,11 @@ class SettingsStore(file: File) {
         put("base", argb?.let { "%08X".format(it) } ?: "")
     }
 
+    /** 被用户「忽略此版本」的版本号（启动静默检查时不再提示该版本） */
+    var skippedVersion: String?
+        get() = j.optString("skip_version").takeIf { it.isNotBlank() }
+        set(v) { put("skip_version", v ?: "") }
+
     /** 上次停留的页面索引（下次启动恢复） */
     var lastTab: Int        get() = j.optInt("last_tab", 0).coerceIn(0, 15)
         set(v) { put("last_tab", v.coerceIn(0, 15)) }

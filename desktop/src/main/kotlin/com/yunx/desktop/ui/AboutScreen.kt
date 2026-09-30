@@ -8,6 +8,7 @@ package com.yunx.desktop.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,18 +23,28 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yunx.desktop.AppServices
+import com.yunx.desktop.app.ReleaseInfo
+import com.yunx.desktop.app.UpdateChecker
+import com.yunx.desktop.app.UpdateResult
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 应用版本（与打包配置保持一致） */
-const val APP_VERSION = "0.4.5"
+const val APP_VERSION = "0.4.6"
 
 private const val REPO_URL = "https://github.com/Floliam675/YunX-Desktop"
 private const val RELEASES_URL = REPO_URL + "/releases"
@@ -43,6 +54,8 @@ private const val LICENSE_URL = "https://www.gnu.org/licenses/agpl-3.0.txt"
 @Composable
 fun AboutScreen(services: AppServices, snackbar: SnackbarHostState) {
     val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
+    var update by remember { mutableStateOf<ReleaseInfo?>(null) }
 
     fun openExternal(url: String) {
         val ok = runCatching { Desktop.getDesktop().browse(URI(url)) }.isSuccess
@@ -59,10 +72,44 @@ fun AboutScreen(services: AppServices, snackbar: SnackbarHostState) {
         Spacer(Modifier.height(12.dp))
 
         AboutCard("YunX Desktop（云析 · 桌面版）") {
-            Text("版本 v" + APP_VERSION, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("版本 v" + APP_VERSION, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(10.dp))
+                OutlinedButton(
+                    onClick = {
+                        if (checking) return@OutlinedButton
+                        checking = true
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) { UpdateChecker.fetchLatest() }
+                            checking = false
+                            when (result) {
+                                is UpdateResult.Success -> {
+                                    if (UpdateChecker.compareVersions(result.release.tagName, APP_VERSION) > 0) {
+                                        update = result.release
+                                    } else {
+                                        snackbar.showSnackbar("已是最新版本（v$APP_VERSION）")
+                                    }
+                                }
+                                is UpdateResult.Failure -> snackbar.showSnackbar("检查更新失败：" + result.reason)
+                            }
+                        }
+                    },
+                    enabled = !checking,
+                ) { Text(if (checking) "检查中…" else "检查更新") }
+            }
             Spacer(Modifier.height(6.dp))
             Text("网盘分享链接解析与高速下载工具。", style = MaterialTheme.typography.bodySmall)
+        }
+
+        update?.let { rel ->
+            UpdateAvailableDialog(
+                release = rel,
+                currentVersion = APP_VERSION,
+                onOpen = { url -> openExternal(url) },
+                onSkip = { tag -> services.settings.skippedVersion = tag; update = null },
+                onDismiss = { update = null },
+            )
         }
 
         Spacer(Modifier.height(12.dp))

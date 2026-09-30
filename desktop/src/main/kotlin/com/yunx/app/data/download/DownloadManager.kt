@@ -947,8 +947,10 @@ class DownloadManager(
     }
 
     /**
-     * 合并分片 → 保存到公共 Download 目录 → 触发完成回调 → 清理。
-     * ★ 增加完整性校验：分片非空 + 合并后总大小 == total，任一不符直接抛错，绝不保存损坏文件。
+     * 合并分片 → **流式写入最终文件** → 触发完成回调 → 清理。
+     * ★ 移植上游 1.2.7（b0d2eb2）：不再先合并出私有副本再复制，
+     *   而是直接写向最终目标、每片写完立即删除，峰值占用从 3 份降到 ≈ 文件大小 + 一个分片。
+     * ★ 完整性校验：分片非空 + 实际写入字节数 == total，任一不符直接删掉半成品并抛错，绝不留下损坏文件。
      */
     private suspend fun finishDownload(
         id: Long,
@@ -965,38 +967,35 @@ class DownloadManager(
                 throw IllegalStateException("分片文件缺失或为空，拒绝合并（防止文件损坏）")
             }
         }
-        // 2) 合并
-        // ★ 合并产物放内部缓存（data 分区，非 FUSE 挂载）：大文件 IO 快得多；保存完成即删
-        val merged = File(cacheBase(), "merged_$id")
-        if (!downloader.mergeChunks(chunkFiles, merged)) {
-            Log.e(TAG, "finishDownload: id=$id 合并分片失败")
-            throw IllegalStateException("合并分片失败")
-        }
-        // 3) 整体大小校验（total>0 时）
-        if (total > 0 && merged.length() != total) {
-            Log.e(TAG, "finishDownload: id=$id 文件大小校验失败 期望=$total 实际=${merged.length()}")
-            merged.delete()
-            throw IllegalStateException("文件大小校验失败：期望 $total 字节，实际 ${merged.length()} 字节（已拒绝保存损坏文件）")
-        }
-        // 4) Android 9- 保存前检查存储权限（动态申请，授权后继续；无权限则报错提示）
-        if (!storagePermissionProvider()) {
-            merged.delete()
-            throw IllegalStateException("未授予存储权限，无法保存到下载目录")
-        }
-        // 5) 保存（自定义目录经 SAF 写入；默认目录走 MediaStore/传统路径）
-        // ★ 同步阻塞拷贝必须切 IO 线程：任务跑在 Dispatchers.Default（CPU 池），
-        //   大文件保存若占满 Default 线程会让整个下载器协程饿死（"100% 卡死保存不了"）
-        val savedPath = withContext(Dispatchers.IO) {
-            DesktopSaver.save(fileName, merged, saveDirProvider())
-        }
+        // 2) 解析最终保存路径（含同名编号），不复制
+        if (!storagePermissionProvider()) throw IllegalStateException("未授予存储权限，无法保存到下载目录")
+        val target = DesktopSaver.prepare(fileName, saveDirProvider())
             ?: throw IllegalStateException("保存到下载目录失败")
-        completeWithAvg(id, savedPath, total)
-        Log.d(TAG, "finishDownload: id=$id 下载完成 savedPath=$savedPath size=${merged.length()}")
+        // 3) 流式合并：分片边写边删（同步阻塞 IO 必须切 IO 线程，否则会饿死下载器协程）
+        val written = try {
+            withContext(Dispatchers.IO) {
+                java.io.BufferedOutputStream(java.io.FileOutputStream(target), 1 shl 16).use { out ->
+                    downloader.mergeChunksToStream(chunkFiles, out)
+                }
+            }
+        } catch (t: Throwable) {
+            // 中断/失败：删掉半成品，避免留下看起来「已完成」的截断文件
+            // （已被消费的分片在下次恢复时按磁盘真实长度重下这一部分）
+            runCatching { target.delete() }
+            throw t
+        }
+        // 4) 整体大小校验（total>0 时）
+        if (total > 0 && written != total) {
+            Log.e(TAG, "finishDownload: id=$id 文件大小校验失败 期望=$total 实际=$written")
+            target.delete()
+            throw IllegalStateException("文件大小校验失败：期望 $total 字节，实际 $written 字节（已拒绝保存损坏文件）")
+        }
+        completeWithAvg(id, target.absolutePath, written)
+        Log.d(TAG, "finishDownload: id=$id 下载完成 savedPath=${target.absolutePath} size=$written")
         taskCallbacks.remove(id)?.let { cb ->
             runCatching { cb() }
         }
         _stats.update { it - id }
-        merged.delete()
         chunkDir.deleteRecursively()
     }
 

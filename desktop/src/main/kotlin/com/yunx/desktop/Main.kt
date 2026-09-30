@@ -57,7 +57,9 @@ import com.yunx.desktop.ui.DownloadScreen
 import com.yunx.desktop.ui.ResolveScreen
 import com.yunx.desktop.ui.SettingsScreen
 import com.yunx.desktop.ui.YunxIcons
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 fun main() = application {
     val services = remember { AppServices() }
@@ -120,6 +122,24 @@ private enum class Tab(val icon: androidx.compose.ui.graphics.vector.ImageVector
 fun AppRoot(services: AppServices, onConfirmVisible: (Boolean) -> Unit = {}) {
     LaunchedEffect(Unit) {
         services.taskDao.markInterruptedAsPaused()
+    }
+    // 启动后静默检查更新：只在发现更新的正式版本、且用户没忽略过该版本时才打扰（移植自上游更新检测）
+    var updateInfo by remember { mutableStateOf<com.yunx.desktop.app.ReleaseInfo?>(null) }
+    LaunchedEffect(Unit) {
+        val r = withContext(Dispatchers.IO) { com.yunx.desktop.app.UpdateChecker.fetchLatest() }
+        if (r is com.yunx.desktop.app.UpdateResult.Success &&
+            com.yunx.desktop.app.UpdateChecker.compareVersions(r.release.tagName, com.yunx.desktop.ui.APP_VERSION) > 0 &&
+            r.release.tagName != services.settings.skippedVersion
+        ) updateInfo = r.release
+    }
+    updateInfo?.let { rel ->
+        com.yunx.desktop.ui.UpdateAvailableDialog(
+            release = rel,
+            currentVersion = com.yunx.desktop.ui.APP_VERSION,
+            onOpen = { url -> runCatching { java.awt.Desktop.getDesktop().browse(java.net.URI(url)) } },
+            onSkip = { tag -> services.settings.skippedVersion = tag; updateInfo = null },
+            onDismiss = { updateInfo = null },
+        )
     }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()

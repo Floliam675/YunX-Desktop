@@ -330,26 +330,38 @@ class ChunkDownloader(private val clientProvider: () -> OkHttpClient) {
         }
     }
 
-    /** 按顺序合并分片为完整文件（零拷贝） */
-    suspend fun mergeChunks(chunkFiles: List<File>, target: File): Boolean = withContext(Dispatchers.IO) {
-        val ok = runCatching {
-            target.parentFile?.mkdirs()
-            java.io.FileOutputStream(target).use { fos ->
-                fos.channel.use { out ->
-                    chunkFiles.forEach { part ->
-                        java.io.FileInputStream(part).use { fis ->
-                            fis.channel.use { inCh ->
-                                var pos = 0L
-                                val size = inCh.size()
-                                while (pos < size) pos += inCh.transferTo(pos, size - pos, out)
-                            }
-                        }
+    /**
+     * 流式合并分片到输出流（**边写边删**）。移植自上游 1.2.7（b0d2eb2「大文件下载改为流式落盘」）。
+     *
+     * 旧实现先把分片合并成一份完整副本、再由保存层复制到目标目录，峰值占用 3 份
+     * （分片 + 合并副本 + 目标副本），大文件在剩余空间不足时直接 ENOSPC。
+     * 现在直接写向最终目标：每片写完立即删除，峰值占用 ≈ 文件大小 + 一个分片。
+     *
+     * 代价（上游有意取舍）：合并中途失败/暂停时，已写出的分片已被删除，
+     * 下次恢复按磁盘真实长度重算进度并重下这部分，不会出现区间错位。
+     *
+     * @return 实际写入的总字节数
+     */
+    suspend fun mergeChunksToStream(chunkFiles: List<File>, out: java.io.OutputStream): Long =
+        withContext(Dispatchers.IO) {
+            var total = 0L
+            val buffer = ByteArray(BUFFER_SIZE)
+            chunkFiles.forEach { part ->
+                java.io.FileInputStream(part).use { fis ->
+                    while (true) {
+                        // 阻塞式写入不响应协程取消：逐块自检，暂停/删除后最多再写一个缓冲块就退出，
+                        // 避免「点了停止/删除没反应」的幽灵任务
+                        if (!isActive) throw CancellationException("下载被取消")
+                        val read = fis.read(buffer)
+                        if (read <= 0) break
+                        out.write(buffer, 0, read)
+                        total += read
                     }
                 }
+                // 该片已完整写入目标，立即释放分片空间（在 use 之后，确保 fd 已关闭）
+                if (!part.delete()) Log.w(TAG, "mergeChunksToStream: 删除分片失败 $part")
             }
-            true
-        }.getOrDefault(false)
-        Log.d(TAG, "mergeChunks: parts=${chunkFiles.size} target=$target ok=$ok")
-        ok
-    }
+            Log.d(TAG, "mergeChunksToStream: parts=${chunkFiles.size} bytes=$total")
+            total
+        }
 }

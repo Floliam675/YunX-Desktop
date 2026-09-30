@@ -32,6 +32,23 @@ object DesktopSaver {
         }.getOrNull()
     }
 
+    /**
+     * 只解析最终保存路径（含同名自动编号），**不复制任何内容**。
+     * 配合 ChunkDownloader.mergeChunksToStream 把分片流式写进最终文件，
+     * 峰值占用从 3 份（分片 + 合并副本 + 目标副本）降到 ≈ 文件大小 + 一个分片
+     * —— 与上游 1.2.7（b0d2eb2「大文件下载改为流式落盘」）同款做法。
+     * @return 可写的目标文件；目录创建失败返回 null
+     */
+    fun prepare(fileName: String, saveDir: String?): File? {
+        val dir = if (!saveDir.isNullOrBlank()) File(saveDir) else defaultDir()
+        if (!dir.isDirectory && !dir.mkdirs()) return null
+        val normalized = fileName.replace('/', File.separatorChar).replace('\\', File.separatorChar)
+        val target = File(dir, normalized)
+        val parent = target.parentFile ?: dir
+        if (!parent.isDirectory && !parent.mkdirs()) return null
+        return uniqueFile(parent, target.name)
+    }
+
     /** 删除已保存文件 */
     fun delete(path: String): Boolean = runCatching { File(path).delete() }.getOrDefault(false)
 
