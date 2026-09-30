@@ -47,12 +47,15 @@ class Pan123ResolveRepository(
 
     override suspend fun listFiles(session: ShareSession, dirFid: String, cookie: String): Result<List<ShareFile>> =
         runCatching {
+            // ⚠️ 根目录必须传 "0"：分享接口对空 ParentFileId 直接返回 400「请输入ParentFileId」。
+            // 上层（桌面 ResolveController）用空串表示根目录，这里统一兜底 —— 与 139/迅雷等平台仓库做法一致。
+            val parent = dirFid.ifBlank { "0" }
             // alist 实证（drivers/123_share/util.go）：next 参数始终固定 "0"，翻页靠 Page 递增；
             // 结束条件：Next=="-1" 或列表为空（Next=="" 表示还有，继续翻页）
             val all = mutableListOf<ShareFile>()
             var page = 1
             do {
-                val (files, nextCursor) = api.getShareFiles(session.shareId, session.stoken, dirFid, "0", page)
+                val (files, nextCursor) = api.getShareFiles(session.shareId, session.stoken, parent, "0", page)
                 all += files
                 val hasMore = files.isNotEmpty() && nextCursor != null
                 page++
