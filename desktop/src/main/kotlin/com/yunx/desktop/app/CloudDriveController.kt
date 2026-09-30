@@ -85,6 +85,15 @@ class CloudDriveController(
         loadRoot()
     }
 
+    /** 退出登录 / 清空选择后复位（右栏回到「请选择网盘」） */
+    fun reset() {
+        platform = null
+        path = emptyList()
+        files = emptyList()
+        error = null
+        message = null
+    }
+
     fun loadRoot() {
         val p = platform ?: return
         path = emptyList()

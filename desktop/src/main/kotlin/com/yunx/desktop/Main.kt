@@ -51,8 +51,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.yunx.desktop.ui.AboutScreen
-import com.yunx.desktop.ui.AccountsScreen
-import com.yunx.desktop.ui.CloudDriveScreen
+import com.yunx.desktop.ui.CloudScreen
 import com.yunx.desktop.ui.DownloadScreen
 import com.yunx.desktop.ui.ResolveScreen
 import com.yunx.desktop.ui.SettingsScreen
@@ -112,8 +111,7 @@ private fun initialWindowSize(settings: SettingsStore): DpSize {
 private enum class Tab(val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String) {
     RESOLVE(YunxIcons.Link, "解析"),
     DOWNLOAD(YunxIcons.Download, "下载"),
-    CLOUD(YunxIcons.Cloud, "云盘"),
-    ACCOUNTS(YunxIcons.Account, "账号"),
+    CLOUD(YunxIcons.Cloud, "网盘"),
     SETTINGS(YunxIcons.Settings, "设置"),
     ABOUT(YunxIcons.About, "关于")
 }
@@ -196,8 +194,7 @@ fun AppRoot(services: AppServices, onConfirmVisible: (Boolean) -> Unit = {}) {
                         when (current) {
                             Tab.RESOLVE -> ResolveScreen(services, snackbar, scope)
                             Tab.DOWNLOAD -> DownloadScreen(services, snackbar)
-                            Tab.CLOUD -> CloudDriveScreen(services, snackbar)
-                            Tab.ACCOUNTS -> AccountsScreen(services, snackbar)
+                            Tab.CLOUD -> CloudScreen(services, snackbar)
                             Tab.SETTINGS -> SettingsScreen(services, snackbar)
                             Tab.ABOUT -> AboutScreen(services, snackbar)
                         }

@@ -1,3 +1,9 @@
+/*
+ * YunX Desktop - AGPL-3.0.
+ * 设置页：按上游 YunX（Android）的样式组织 —— 分区标题（SectionLabel）+ 条目行（SettingsRow），
+ * 需要多项选择或精细调节的项进二级菜单（对话框）。桌面版保留自己的项目：
+ * 下载（线程数/保存目录/并发/重试/限速）、主题与外观、任务与数据、关于与更新。
+ */
 package com.yunx.desktop.ui
 
 import androidx.compose.foundation.background
@@ -6,9 +12,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,11 +34,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,10 +58,15 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yunx.desktop.AppServices
+import com.yunx.desktop.app.ReleaseInfo
+import com.yunx.desktop.app.UpdateChecker
+import com.yunx.desktop.app.UpdateResult
 import java.awt.Desktop
 import java.io.File
 import javax.swing.JFileChooser
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(services: AppServices, snackbar: SnackbarHostState) {
@@ -62,39 +75,136 @@ fun SettingsScreen(services: AppServices, snackbar: SnackbarHostState) {
     var maxConc by remember { mutableIntStateOf(services.settings.maxConcurrent) }
     var retry by remember { mutableIntStateOf(services.settings.retryCount) }
     var speedMb by remember { mutableIntStateOf((services.settings.speedLimitBytes / 1024 / 1024).toInt()) }
-    var dir by remember { mutableStateOf(services.settings.downloadDir) }
+    var themeMenu by remember { mutableStateOf(false) }     // 二级菜单：主题
+    var threadsMenu by remember { mutableStateOf(false) }   // 二级菜单：各网盘线程数
+    var checking by remember { mutableStateOf(false) }
+    var update by remember { mutableStateOf<ReleaseInfo?>(null) }
 
-    Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
+    fun openDir(dir: File) {
+        runCatching { dir.mkdirs(); Desktop.getDesktop().open(dir) }
+            .onFailure { scope.launch { snackbar.showSnackbar("无法打开目录：" + dir.absolutePath) } }
+    }
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 14.dp).verticalScroll(rememberScrollState())) {
         Text("设置", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(6.dp))
 
-        var themeMenu by remember { mutableStateOf(false) }   // 二级菜单：整个主题设置都在里面
-
-        Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
-            Column(Modifier.padding(14.dp)) {
-                Text("外观", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(8.dp))
-                val dark = darkMode(services)
-                val accent = services.settings.accentArgb?.let { v -> Color(v.toLong()) } ?: defaultPrimary(dark)
-                val bg = services.settings.baseArgb?.let { v -> Color(v.toLong()) } ?: defaultBackground(dark)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        when (services.settings.theme) { "light" -> "浅色"; "dark" -> "深色"; else -> "跟随系统" },
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Box(Modifier.size(18.dp).clip(CircleShape).background(accent))
-                    Spacer(Modifier.width(6.dp))
-                    Box(Modifier.size(18.dp).clip(CircleShape).background(bg)
-                        .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
-                    Spacer(Modifier.weight(1f))
-                    Button(onClick = { themeMenu = true }) { Text("设置主题…") }
-                }
+        // ---------------- 下载 ----------------
+        SectionLabel("下载")
+        SettingsGroup {
+            SettingsRow("下载线程数", subtitle = "每个网盘可分别调节，新建任务时生效") {
+                Text(threadsSummary(services), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(10.dp))
+                OutlinedButton(onClick = { threadsMenu = true }) { Text("调节…") }
+            }
+            SettingsRow(
+                "下载保存目录",
+                subtitle = if (services.settings.downloadDir == null) "默认：系统「下载」文件夹（跟随系统设置）"
+                           else "已自定义",
+            ) {
+                Text(services.effectiveDownloadDir().absolutePath, style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(10.dp))
+                OutlinedButton(onClick = {
+                    val chooser = JFileChooser().apply {
+                        fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                        dialogTitle = "选择下载目录"
+                        currentDirectory = services.effectiveDownloadDir()
+                    }
+                    if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                        services.settings.downloadDir = chooser.selectedFile.absolutePath
+                    }
+                }) { Text("选择…") }
+                Spacer(Modifier.width(6.dp))
+                OutlinedButton(onClick = { services.settings.downloadDir = null }) { Text("默认") }
+            }
+            SliderRow("最大同时下载任务数", maxConc, 1, 10) { v -> maxConc = v; services.settings.maxConcurrent = v }
+            SliderRow("失败自动重试次数", retry, 0, 10) { v -> retry = v; services.settings.retryCount = v }
+            SliderRow("下载速度限制（MB/s，0=不限）", speedMb, 0, 100) { v ->
+                speedMb = v
+                services.settings.speedLimitBytes = v * 1024L * 1024L
             }
         }
-        Spacer(Modifier.height(8.dp))
 
-        // 二级菜单：深浅模式 + 预选色 + 自由调节，整个主题设置都在这里，改完点「完成」即可
+        // ---------------- 主题与外观 ----------------
+        SectionLabel("主题与外观")
+        SettingsGroup {
+            val dark = darkMode(services)
+            val accent = services.settings.accentArgb?.let { v -> Color(v.toLong()) } ?: defaultPrimary(dark)
+            val bg = services.settings.baseArgb?.let { v -> Color(v.toLong()) } ?: defaultBackground(dark)
+            SettingsRow(
+                "主题",
+                subtitle = when (services.settings.theme) { "light" -> "浅色"; "dark" -> "深色"; else -> "跟随系统" },
+            ) {
+                Box(Modifier.size(18.dp).clip(CircleShape).background(accent))
+                Spacer(Modifier.width(6.dp))
+                Box(Modifier.size(18.dp).clip(CircleShape).background(bg)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape))
+                Spacer(Modifier.width(10.dp))
+                OutlinedButton(onClick = { themeMenu = true }) { Text("设置主题…") }
+            }
+        }
+
+        // ---------------- 任务与数据 ----------------
+        SectionLabel("任务与数据")
+        SettingsGroup {
+            val done = tasks.count { it.status == 3 }
+            SettingsRow("已完成任务", subtitle = "$done 个") {
+                OutlinedButton(
+                    enabled = done > 0,
+                    onClick = {
+                        scope.launch {
+                            tasks.filter { it.status == 3 }.forEach { services.downloadManager.remove(it.id, deleteLocal = false) }
+                            snackbar.showSnackbar("已清除 $done 个已完成任务")
+                        }
+                    },
+                ) { Text("清除已完成") }
+            }
+            SettingsRow("数据目录", subtitle = AppServices.dataDir().absolutePath) {
+                OutlinedButton(onClick = { openDir(AppServices.dataDir()) }) { Text("打开") }
+            }
+            SettingsRow("下载目录", subtitle = services.effectiveDownloadDir().absolutePath) {
+                OutlinedButton(onClick = { openDir(services.effectiveDownloadDir()) }) { Text("打开") }
+            }
+        }
+
+        // ---------------- 关于与更新 ----------------
+        SectionLabel("关于与更新")
+        SettingsGroup {
+            SettingsRow("版本", subtitle = "v" + APP_VERSION + "　（上游 YunX " + "1.2.7" + " 移植）") {
+                OutlinedButton(
+                    enabled = !checking,
+                    onClick = {
+                        checking = true
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) { UpdateChecker.fetchLatest() }
+                            checking = false
+                            when (result) {
+                                is UpdateResult.Success ->
+                                    if (UpdateChecker.compareVersions(result.release.tagName, APP_VERSION) > 0) {
+                                        update = result.release
+                                    } else {
+                                        snackbar.showSnackbar("已是最新版本（v" + APP_VERSION + "）")
+                                    }
+                                is UpdateResult.Failure -> snackbar.showSnackbar("检查更新失败：" + result.reason)
+                            }
+                        }
+                    },
+                ) { Text(if (checking) "检查中…" else "检查更新") }
+                Spacer(Modifier.width(6.dp))
+                OutlinedButton(onClick = {
+                    runCatching { Desktop.getDesktop().browse(java.net.URI("https://github.com/Floliam675/YunX-Desktop/releases")) }
+                }) { Text("打开发布页") }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Text("YunX Desktop（云析桌面版）—— 由 Android 开源应用 YunX（AGPL-3.0，github.com/CYQawa/YunX）移植。",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        // ---------------- 二级菜单 ----------------
+        if (threadsMenu) ThreadsDialog(services) { threadsMenu = false }
         if (themeMenu) {
             ThemeSettingsDialog(
                 mode = services.settings.theme,
@@ -107,19 +217,87 @@ fun SettingsScreen(services: AppServices, snackbar: SnackbarHostState) {
                 onClose = { themeMenu = false },
             )
         }
+        update?.let { rel ->
+            UpdateAvailableDialog(
+                release = rel,
+                currentVersion = APP_VERSION,
+                onOpen = { url -> runCatching { Desktop.getDesktop().browse(java.net.URI(url)) } },
+                onSkip = { tag -> services.settings.skippedVersion = tag; update = null },
+                onDismiss = { update = null },
+            )
+        }
+    }
+}
 
-        // 各网盘分别调节分片线程数（默认：迅雷 8，其余 32）
-        Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                Text("各网盘下载线程数", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(2.dp))
+/** 上游样式的小标题 */
+@Composable
+private fun SectionLabel(text: String) {
+    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 6.dp))
+}
+
+/** 一组条目（同一分区） */
+@Composable
+private fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
+    Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(content = content)
+    }
+}
+
+/** 一条设置项：左标题（可带副标题）+ 右侧控件 */
+@Composable
+private fun SettingsRow(title: String, subtitle: String? = null, trailing: @Composable RowScope.() -> Unit = {}) {
+    Column {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge)
+                subtitle?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+            }
+            trailing()
+        }
+        HorizontalDivider(Modifier.padding(start = 16.dp))
+    }
+}
+
+/** 数值型设置项：标题 + 数值 + 滑杆 */
+@Composable
+private fun SliderRow(title: String, value: Int, min: Int, max: Int, onChange: (Int) -> Unit) {
+    Column {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Text(value.toString(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            }
+            Slider(
+                value = value.toFloat(),
+                onValueChange = { onChange(it.toInt().coerceIn(min, max)) },
+                valueRange = min.toFloat()..max.toFloat(),
+                steps = (max - min - 1).coerceAtLeast(0),
+            )
+        }
+        HorizontalDivider(Modifier.padding(start = 16.dp))
+    }
+}
+
+/** 各网盘线程数二级菜单 */
+@Composable
+private fun ThreadsDialog(services: AppServices, onClose: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("各网盘下载线程数") },
+        text = {
+            Column(Modifier.width(520.dp)) {
                 Text("不同网盘对并发敏感度不同，可分别调节（新建任务时生效）",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 PLATFORM_THREADS.forEach { (label, key) ->
                     var value by remember(key) { mutableIntStateOf(services.settings.threadsFor(key)) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(label, Modifier.width(64.dp), style = MaterialTheme.typography.bodyMedium)
+                        Text(label, Modifier.width(56.dp), style = MaterialTheme.typography.bodyMedium)
                         Slider(
                             value = value.toFloat(),
                             onValueChange = { v -> value = v.toInt().coerceIn(1, 64); services.settings.setThreads(key, value) },
@@ -132,87 +310,16 @@ fun SettingsScreen(services: AppServices, snackbar: SnackbarHostState) {
                     }
                 }
             }
-        }
-        Spacer(Modifier.height(8.dp))
-
-        SettingSlider("最大同时下载任务数", maxConc, 1, 10) { v -> maxConc = v; services.settings.maxConcurrent = v }
-        SettingSlider("失败自动重试次数", retry, 0, 10) { v -> retry = v; services.settings.retryCount = v }
-        SettingSlider("全局下载限速（MB/s，0=不限）", speedMb, 0, 100) { v ->
-            speedMb = v
-            services.settings.speedLimitBytes = v * 1024L * 1024L
-        }
-
-        Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
-            Column(Modifier.padding(14.dp)) {
-                Text("下载保存目录", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(2.dp))
-                Text(if (dir == null) "默认（系统「下载」文件夹，跟随系统设置）" else "已自定义",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(services.effectiveDownloadDir().absolutePath, Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.width(10.dp))
-                    OutlinedButton(onClick = {
-                        val chooser = JFileChooser().apply {
-                            fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                            dialogTitle = "选择下载目录"
-                        }
-                        if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                            val f = chooser.selectedFile
-                            services.settings.downloadDir = f.absolutePath
-                            dir = f.absolutePath
-                        }
-                    }) { Text("选择…") }
-                    Spacer(Modifier.width(6.dp))
-                    OutlinedButton(onClick = { services.settings.downloadDir = null; dir = null }) { Text("默认") }
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
-        Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
-            Column(Modifier.padding(14.dp)) {
-                Text("任务与数据", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { runCatching { Desktop.getDesktop().open(AppServices.dataDir()) } }) {
-                        Text("打开数据目录")
-                    }
-                    OutlinedButton(onClick = { runCatching { Desktop.getDesktop().open(AppServices.downloadDir()) } }) {
-                        Text("打开下载目录")
-                    }
-                    Button(onClick = {
-                        scope.launch {
-                            tasks.filter { it.status == 3 }.forEach { services.downloadManager.remove(it.id, deleteLocal = false) }
-                            snackbar.showSnackbar("已清除" + tasks.count { it.status == 3 } + " 个已完成任务")
-                        }
-                    }) { Text("清除已完成") }
-                }
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-        Text("YunX Desktop（云析桌面版）—— 由 Android 开源应用 YunX（AGPL-3.0，github.com/CYQawa/YunX）移植。",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("完成") } },
+    )
 }
 
-@Composable
-private fun SettingSlider(title: String, value: Int, min: Int, max: Int, onChange: (Int) -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(bottom = 8.dp), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, Modifier.weight(1f))
-                Text(value.toString(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            }
-            Slider(
-                value = value.toFloat(),
-                onValueChange = { onChange(it.toInt().coerceIn(min, max)) },
-                valueRange = min.toFloat()..max.toFloat(),
-                steps = (max - min - 1).coerceAtLeast(0),
-            )
-        }
-    }
+/** 「下载线程数」行右侧的摘要：通用值 + 已单独设置过的平台数 */
+private fun threadsSummary(services: AppServices): String {
+    val generic = services.settings.threadsFor("")
+    val custom = PLATFORM_THREADS.drop(1).count { (_, key) -> services.settings.threadsFor(key) != generic }
+    return if (custom == 0) "通用 $generic" else "通用 $generic · 已单独设置 $custom 个"
 }
 
 /** 设置页「各网盘下载线程数」的条目：key 为空 = 通用（未知来源） */
