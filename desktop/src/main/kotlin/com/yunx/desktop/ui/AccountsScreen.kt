@@ -115,7 +115,7 @@ private fun launchWebLogin(
         else -> return
     }
     // 借本机 Edge + CDP 取登录态（不再内嵌 Chromium）；失败时提示用户改用手动粘贴
-    EdgeCdpLogin(
+    BrowserLogin(
         windowTitle = title,
         url = url,
         storageKey = storageKey,
