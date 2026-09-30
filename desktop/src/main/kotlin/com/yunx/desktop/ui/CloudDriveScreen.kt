@@ -89,14 +89,14 @@ fun CloudDriveScreen(services: AppServices, snackbar: SnackbarHostState) {
         }
         Spacer(Modifier.height(10.dp))
 
-        // 面包屑
+        // 面包屑：回根目录就是点第一个「根目录」，不再单独放一个重复按钮
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             TextButton(onClick = { cloud.back() }, enabled = cloud.path.isNotEmpty() && cloud.operating.not()) { Text("↑ 上一级") }
-            TextButton(onClick = { cloud.loadRoot() }) { Text("根目录") }
+            TextButton(onClick = { cloud.refresh() }, enabled = cloud.operating.not()) { Text("刷新") }
             Spacer(Modifier.width(4.dp))
             val crumb = cloud.path
             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { cloud.navigateToLevel(0) }) { Text("根") }
+                TextButton(onClick = { cloud.navigateToLevel(0) }) { Text("根目录") }
                 crumb.forEachIndexed { i, seg ->
                     Text("/")
                     TextButton(onClick = { cloud.navigateToLevel(i + 1) }) { Text(seg.name, maxLines = 1) }

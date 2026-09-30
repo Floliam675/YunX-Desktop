@@ -120,6 +120,13 @@ class CloudDriveController(
         scope.launch { doLoad(p, dirToken, trimmed) }
     }
 
+    /** 刷新当前目录（重新拉一次列表） */
+    fun refresh() {
+        val p = platform ?: return
+        val dirToken = path.lastOrNull()?.dirToken ?: rootToken(p)
+        scope.launch { doLoad(p, dirToken, path) }
+    }
+
     /** 单文件下载 */
     fun downloadFile(file: ShareFile) {
         val p = platform ?: return

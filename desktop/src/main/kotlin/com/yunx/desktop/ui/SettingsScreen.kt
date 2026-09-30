@@ -1,6 +1,9 @@
 package com.yunx.desktop.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -8,8 +11,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -24,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +37,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yunx.desktop.AppServices
@@ -43,7 +51,6 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(services: AppServices, snackbar: SnackbarHostState) {
     val scope = rememberCoroutineScope()
     val tasks by services.taskDao.observeAll().collectAsState(initial = emptyList())
-    var threads by remember { mutableIntStateOf(services.settings.threadsFor("")) }
     var maxConc by remember { mutableIntStateOf(services.settings.maxConcurrent) }
     var retry by remember { mutableIntStateOf(services.settings.retryCount) }
     var speedMb by remember { mutableIntStateOf((services.settings.speedLimitBytes / 1024 / 1024).toInt()) }
@@ -70,7 +77,49 @@ fun SettingsScreen(services: AppServices, snackbar: SnackbarHostState) {
         }
         Spacer(Modifier.height(8.dp))
 
-        SettingSlider("通用分片线程数", threads, 1, 64) { v -> threads = v; services.settings.setThreads("", v) }
+        // 自由调节主题色与背景色（滑杆任意调，实时生效）
+        ColorAdjustCard(
+            title = "主题色（自由调节）",
+            hint = "调色相 / 饱和度 / 明度，按钮与高亮色实时跟随；正文对比度自动保护",
+            current = services.settings.accentArgb?.let { Color(it) } ?: defaultPrimary(darkMode(services)),
+            onPick = { services.settings.setAccent(it?.toArgb()) },
+        )
+        Spacer(Modifier.height(8.dp))
+        ColorAdjustCard(
+            title = "背景色（自由调节）",
+            hint = "改整个界面底色（含各级卡片），前景色按对比度自动取深/浅",
+            current = services.settings.baseArgb?.let { Color(it) } ?: defaultBackground(darkMode(services)),
+            onPick = { services.settings.setBaseColor(it?.toArgb()) },
+        )
+        Spacer(Modifier.height(8.dp))
+
+        // 各网盘分别调节分片线程数（默认：迅雷 8，其余 32）
+        Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Text("各网盘下载线程数", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(2.dp))
+                Text("不同网盘对并发敏感度不同，可分别调节（新建任务时生效）",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(6.dp))
+                PLATFORM_THREADS.forEach { (label, key) ->
+                    var value by remember(key) { mutableIntStateOf(services.settings.threadsFor(key)) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, Modifier.width(64.dp), style = MaterialTheme.typography.bodyMedium)
+                        Slider(
+                            value = value.toFloat(),
+                            onValueChange = { v -> value = v.toInt().coerceIn(1, 64); services.settings.setThreads(key, value) },
+                            valueRange = 1f..64f,
+                            steps = 62,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(value.toString(), Modifier.width(34.dp),
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
         SettingSlider("最大同时下载任务数", maxConc, 1, 10) { v -> maxConc = v; services.settings.maxConcurrent = v }
         SettingSlider("失败自动重试次数", retry, 0, 10) { v -> retry = v; services.settings.retryCount = v }
         SettingSlider("全局下载限速（MB/s，0=不限）", speedMb, 0, 100) { v ->
@@ -81,9 +130,12 @@ fun SettingsScreen(services: AppServices, snackbar: SnackbarHostState) {
         Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
             Column(Modifier.padding(14.dp)) {
                 Text("下载保存目录", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(2.dp))
+                Text(if (dir == null) "默认（系统「下载」文件夹，跟随系统设置）" else "已自定义",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(dir ?: AppServices.downloadDir().absolutePath, Modifier.weight(1f),
+                    Text(services.effectiveDownloadDir().absolutePath, Modifier.weight(1f),
                         style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.width(10.dp))
                     OutlinedButton(onClick = {
@@ -148,3 +200,73 @@ private fun SettingSlider(title: String, value: Int, min: Int, max: Int, onChang
     }
 }
 
+/** 设置页「各网盘下载线程数」的条目：key 为空 = 通用（未知来源） */
+private val PLATFORM_THREADS = listOf(
+    "通用" to "",
+    "夸克" to com.yunx.app.data.download.DownloadPlatform.QUARK,
+    "UC" to com.yunx.app.data.download.DownloadPlatform.UC,
+    "迅雷" to com.yunx.app.data.download.DownloadPlatform.XUNLEI,
+    "百度" to com.yunx.app.data.download.DownloadPlatform.BAIDU,
+    "139" to com.yunx.app.data.download.DownloadPlatform.C139,
+    "123" to com.yunx.app.data.download.DownloadPlatform.PAN123,
+)
+
+/** 当前是否深色（用于取默认基准色）：跟随系统时读系统主题 */
+@Composable
+private fun darkMode(services: AppServices): Boolean = when (services.settings.theme) {
+    "light" -> false
+    "dark" -> true
+    else -> isSystemInDarkTheme()
+}
+
+/**
+ * 颜色自由调节卡片：色相 / 饱和度 / 明度 三根滑杆，任意调色；「重置」回到默认。
+ * 拖动时立即回调 onPick，配色实时生效（不点确定）。
+ */
+@Composable
+private fun ColorAdjustCard(title: String, hint: String, current: Color, onPick: (Color?) -> Unit) {
+    val init = remember { rgbToHsv(current) }
+    var h by remember { mutableFloatStateOf(init[0]) }
+    var s by remember { mutableFloatStateOf(init[1]) }
+    var v by remember { mutableFloatStateOf(init[2]) }
+    val color = hsvToColor(h, s, v)
+
+    Card(Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(26.dp).background(color, RoundedCornerShape(6.dp)))
+                Spacer(Modifier.width(10.dp))
+                Text(hexOf(color), style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.weight(1f))
+                OutlinedButton(onClick = {
+                    h = init[0]; s = init[1]; v = init[2]
+                    onPick(null)                       // 回到 Material3 默认
+                }) { Text("重置") }
+            }
+            listOf(
+                Triple("色相", 0, 360f),
+                Triple("饱和度", 1, 100f),
+                Triple("明度", 2, 100f),
+            ).forEach { (label, idx, max) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(label, Modifier.width(52.dp), style = MaterialTheme.typography.bodyMedium)
+                    val value = when (idx) { 0 -> h; 1 -> s * 100f; else -> v * 100f }
+                    Slider(
+                        value = value,
+                        onValueChange = { nv ->
+                            when (idx) { 0 -> h = nv; 1 -> s = nv / 100f; else -> v = nv / 100f }
+                            onPick(hsvToColor(h, s, v))   // 实时应用
+                        },
+                        valueRange = 0f..max,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(value.toInt().toString(), Modifier.width(38.dp),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+}

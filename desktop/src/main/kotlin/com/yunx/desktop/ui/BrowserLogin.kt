@@ -133,6 +133,8 @@ class BrowserLogin(
         var process: Process? = null
         var session: LoginSession? = null
         var usedBrowser: File? = null
+        var profileForCleanup: File? = null
+        var usedPort: Int? = null
         try {
             val browser = findBrowser() ?: run {
                 onError("未找到可用的浏览器（Edge / Chrome / Brave / Firefox / 360 / QQ 等任一即可）：可改为在「网盘账号」页手动粘贴 Cookie / JWT")
@@ -140,9 +142,11 @@ class BrowserLogin(
             }
             usedBrowser = browser.exe
             val profile = profileDirFor(browser.exe).apply { mkdirs() }
+            profileForCleanup = profile
 
             val (port, launched) = openBrowser(browser, profile)
             process = launched
+            usedPort = port
             session = attach(browser, port) ?: run {
                 onError("无法连接 ${browser.name} 的调试端口（$port）：请关闭 YunX 打开的浏览器窗口后重试")
                 return
@@ -162,12 +166,20 @@ class BrowserLogin(
         } catch (t: Throwable) {
             onError("网页登录失败：" + (t.message ?: t.javaClass.simpleName))
         } finally {
+            // 1) 先用协议好好关（Browser.close / browser.close）
             runCatching { session?.close() }
-            runCatching { session?.awaitClose(8) }
+            runCatching { session?.awaitClose(3) }
             runCatching { (session as? JsonWsSession)?.shutdown() }
-            // 浏览器没被协议关掉就按进程收尾，别留下占着 profile 的孤儿进程
-            runCatching {
-                process?.let { if (!it.waitFor(8, TimeUnit.SECONDS)) it.destroyForcibly() }
+            // 2) 我们启动的那棵进程树（多进程浏览器只杀父进程会留孤儿）
+            killTree(process)
+            // 3) 收尾主力：按调试端口占用者整棵树杀。Firefox 会自我重启/复用实例，
+            //    手里的 Process 未必还是真正的浏览器进程；端口是我们自己选的，占用者一定是我们拉起的浏览器。
+            usedPort?.let { killBrowserOnPort(it) }
+            // 4) 确认退干净后清掉锁文件，否则下次启动会提示「配置文件正在使用」
+            val browserFile = usedBrowser
+            val profDir = profileForCleanup
+            if (browserFile != null && profDir != null) {
+                runCatching { cleanStaleLocks(profDir, browserFile, usedPort) }
             }
             runCatching { usedBrowser?.let { trimProfileCache(it) } }
             LOGIN_IN_PROGRESS.set(false)
@@ -235,6 +247,60 @@ class BrowserLogin(
         java.net.Socket().use { it.connect(java.net.InetSocketAddress("127.0.0.1", port), 500) }
         true
     }.getOrDefault(false)
+
+    // ---------------------------------------------------------------- 收尾清理
+    // 铁律：**绝不按进程名杀浏览器**（会连用户自己的窗口一起杀掉）。
+    // 只处理 ①我们自己启动的那棵进程树，或 ②命令行里含本程序专用 profile 路径的进程。
+
+    /** 整棵树收掉：浏览器都是多进程（渲染/GPU/内容进程），只杀父进程会留下孤儿。 */
+    private fun killTree(root: Process?) {
+        root ?: return
+        runCatching {
+            val handle = root.toHandle()
+            val children = handle.descendants().toList()
+            handle.destroy()
+            children.forEach { it.destroy() }
+            Thread.sleep(800)
+            (children + handle).filter { it.isAlive }.forEach { it.destroyForcibly() }
+        }
+    }
+
+    /**
+     * 找到占用我们调试端口的进程并整棵树杀掉。
+     * 这是收尾的主力：**不能依赖命令行读取** —— Java 在 Windows 上 `ProcessHandle.info().commandLine()`
+     * 对其它进程常常返回空（实测：进程明明在跑，过滤结果却是 0），而且 Firefox 会自我重启/复用实例，
+     * 我们手里的 Process 对象未必还是那个真正的浏览器进程。端口是我们自己选的，占用者必然是我们拉起的浏览器。
+     */
+    private fun killBrowserOnPort(port: Int) {
+        val pid = portOwnerPid(port) ?: return
+        runCatching {
+            ProcessBuilder("taskkill", "/PID", pid.toString(), "/T", "/F")
+                .redirectErrorStream(true).start().waitFor(6, TimeUnit.SECONDS)
+        }
+    }
+
+    /** 谁在监听这个端口（netstat 解析，无需管理员权限） */
+    private fun portOwnerPid(port: Int): Int? = runCatching {
+        val out = ProcessBuilder("netstat", "-ano").redirectErrorStream(true).start()
+            .inputStream.bufferedReader().use { it.readText() }
+        out.lineSequence()
+            .firstOrNull { it.contains(":$port") && it.contains("LISTENING", ignoreCase = true) }
+            ?.trim()?.split(Regex("\\s+"))?.lastOrNull()?.toIntOrNull()
+    }.getOrNull()
+
+    /**
+     * 清掉浏览器退出后可能残留的锁文件，否则下次启动会提示「配置文件正在使用 / Firefox 已在运行」。
+     * 只在端口已无占用（即浏览器确实退干净）时才删。
+     */
+    private fun cleanStaleLocks(profile: File, browser: File, port: Int?) {
+        runCatching {
+            if (port != null && portOwnerPid(port) != null) return
+            val firefox = browser.name.startsWith("firefox", ignoreCase = true)
+            val names = if (firefox) listOf("parent.lock", "lock", ".parentlock")
+                        else listOf("SingletonLock", "SingletonCookie", "SingletonSocket")
+            names.forEach { n -> File(profile, n).takeIf { it.exists() }?.delete() }
+        }
+    }
 
     /** 按内核类型建立会话。 */
     private fun attach(browser: Browser, port: Int): LoginSession? {

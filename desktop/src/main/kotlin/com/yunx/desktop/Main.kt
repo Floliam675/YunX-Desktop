@@ -132,7 +132,13 @@ fun AppRoot(services: AppServices, onConfirmVisible: (Boolean) -> Unit = {}) {
         "dark" -> true
         else -> isSystemInDarkTheme()
     }
-    MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
+    MaterialTheme(
+        colorScheme = com.yunx.desktop.ui.yunxScheme(
+            dark = dark,
+            accentArgb = services.settings.accentArgb,
+            baseArgb = services.settings.baseArgb,
+        ),
+    ) {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
         ) { pad ->
@@ -173,7 +179,7 @@ fun AppRoot(services: AppServices, onConfirmVisible: (Boolean) -> Unit = {}) {
                             Tab.CLOUD -> CloudDriveScreen(services, snackbar)
                             Tab.ACCOUNTS -> AccountsScreen(services, snackbar)
                             Tab.SETTINGS -> SettingsScreen(services, snackbar)
-                            Tab.ABOUT -> AboutScreen(snackbar)
+                            Tab.ABOUT -> AboutScreen(services, snackbar)
                         }
                     }
                 }

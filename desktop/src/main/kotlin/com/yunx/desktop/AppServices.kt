@@ -2,6 +2,7 @@ package com.yunx.desktop
 
 import com.yunx.app.data.download.ChunkDownloader
 import com.yunx.app.data.download.DownloadManager
+import com.yunx.app.data.download.DownloadPlatform
 import com.yunx.app.data.download.JsonDownloadTaskStore
 import com.yunx.app.data.network.HttpClients
 import com.yunx.app.data.network.XunleiDeviceFingerprint
@@ -20,8 +21,38 @@ import java.io.File
 class AppServices {
     companion object {
         fun dataDir(): File = File(System.getProperty("user.home"), ".yunx-desktop").apply { mkdirs() }
-        fun downloadDir(): File = File(System.getProperty("user.home"), "Downloads").apply { mkdirs() }
+
+        @Volatile
+        private var cachedDownloadDir: File? = null
+
+        /**
+         * 系统真实的「下载」文件夹。
+         * 不能硬编码成 ~/Downloads：Windows 允许用户把「下载」移到别的盘（属性 → 位置），
+         * 那样硬编码路径要么不存在、要么与系统认知不一致。优先读注册表里的已知文件夹。
+         */
+        fun downloadDir(): File = cachedDownloadDir ?: resolveDownloadDir().also { cachedDownloadDir = it }
+
+        private fun resolveDownloadDir(): File = runCatching {
+            val home = System.getProperty("user.home")
+            val fromRegistry = if (System.getProperty("os.name").orEmpty().startsWith("Windows", true)) {
+                val proc = ProcessBuilder(
+                    "reg", "query",
+                    "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders",
+                    "/v", "{374DE290-123F-4565-9164-39C4925E467B}",
+                ).redirectErrorStream(true).start()
+                val out = proc.inputStream.bufferedReader().use { it.readText() }
+                proc.waitFor()
+                Regex("REG_SZ\\s+(.+)").find(out)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+            } else null
+
+            listOfNotNull(fromRegistry?.let(::File), File(home, "Downloads"), File(home))
+                .firstOrNull { it.isDirectory || it.mkdirs() } ?: File(home)
+        }.getOrElse { File(System.getProperty("user.home"), "Downloads") }.apply { mkdirs() }
     }
+
+    /** 实际生效的下载目录：设置里指定过就用它，否则用系统「下载」文件夹 */
+    fun effectiveDownloadDir(): File =
+        settings.downloadDir?.let(::File)?.takeIf { it.isDirectory || it.mkdirs() } ?: downloadDir()
 
     val settings = SettingsStore(File(dataDir(), "settings.json"))
     val accountStore = DriveAccountStore(File(dataDir(), "accounts.json"))
@@ -83,9 +114,24 @@ class SettingsStore(file: File) {
         put("theme", v)
     }
 
+    /** 自定义主题色（ARGB，null = Material3 默认）；Compose 可观察，滑杆拖动即时生效 */
+    private val accentState = mutableStateOf(j.optString("accent").takeIf { it.length == 8 }?.toLongOrNull(16)?.toInt())
+    val accentArgb: Int? get() = accentState.value
+    fun setAccent(argb: Int?) {
+        accentState.value = argb
+        put("accent", argb?.let { "%08X".format(it) } ?: "")
+    }
+
+    /** 自定义背景色（ARGB，null = 默认） */
+    private val baseColorState = mutableStateOf(j.optString("base").takeIf { it.length == 8 }?.toLongOrNull(16)?.toInt())
+    val baseArgb: Int? get() = baseColorState.value
+    fun setBaseColor(argb: Int?) {
+        baseColorState.value = argb
+        put("base", argb?.let { "%08X".format(it) } ?: "")
+    }
+
     /** 上次停留的页面索引（下次启动恢复） */
-    var lastTab: Int
-        get() = j.optInt("last_tab", 0).coerceIn(0, 15)
+    var lastTab: Int        get() = j.optInt("last_tab", 0).coerceIn(0, 15)
         set(v) { put("last_tab", v.coerceIn(0, 15)) }
 
     /** 窗口尺寸记忆 */
@@ -97,17 +143,17 @@ class SettingsStore(file: File) {
         get() = j.optInt("win_h", 780).coerceIn(600, 2160)
         set(v) { put("win_h", v.coerceIn(600, 2160)) }
 
-    fun threadsFor(platform: String): Int {
-        if (platform == com.yunx.app.data.download.DownloadPlatform.XUNLEI) return 8
-        if (platform.isBlank() || platform == com.yunx.app.data.download.DownloadPlatform.GENERIC)
-            return j.optInt("threads", 32).coerceIn(1, 512)
-        return j.optInt("threads_" + platform, 32).coerceIn(1, 512)
-    }
-    fun setThreads(platform: String, value: Int) {
-        val v = value.coerceIn(1, 512)
-        if (platform.isBlank() || platform == com.yunx.app.data.download.DownloadPlatform.GENERIC) put("threads", v)
-        else put("threads_" + platform, v)
-    }
+    /** 每个网盘独立的分片线程数：迅雷默认 8（其接口并发敏感），其余默认 32；全部可在设置页分别调节 */
+    fun threadsFor(platform: String): Int =
+        j.optInt(threadsKey(platform), defaultThreads(platform)).coerceIn(1, 512)
+
+    fun setThreads(platform: String, value: Int) = put(threadsKey(platform), value.coerceIn(1, 512))
+
+    private fun threadsKey(platform: String): String =
+        if (platform.isBlank() || platform == DownloadPlatform.GENERIC) "threads" else "threads_$platform"
+
+    private fun defaultThreads(platform: String): Int =
+        if (platform == DownloadPlatform.XUNLEI) 8 else 32
 
     private fun put(key: String, value: Any) {
         val obj = j

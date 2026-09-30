@@ -33,7 +33,7 @@ import java.net.URI
 import kotlinx.coroutines.launch
 
 /** 应用版本（与打包配置保持一致） */
-const val APP_VERSION = "0.4.4"
+const val APP_VERSION = "0.4.5"
 
 private const val REPO_URL = "https://github.com/Floliam675/YunX-Desktop"
 private const val RELEASES_URL = REPO_URL + "/releases"
@@ -41,7 +41,7 @@ private const val UPSTREAM_URL = "https://github.com/CYQawa/YunX"
 private const val LICENSE_URL = "https://www.gnu.org/licenses/agpl-3.0.txt"
 
 @Composable
-fun AboutScreen(snackbar: SnackbarHostState) {
+fun AboutScreen(services: AppServices, snackbar: SnackbarHostState) {
     val scope = rememberCoroutineScope()
 
     fun openExternal(url: String) {
@@ -90,7 +90,7 @@ fun AboutScreen(snackbar: SnackbarHostState) {
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { openDir(AppServices.dataDir()) }) { Text("打开数据目录") }
-                OutlinedButton(onClick = { openDir(AppServices.downloadDir()) }) { Text("打开下载目录") }
+                OutlinedButton(onClick = { openDir(services.effectiveDownloadDir()) }) { Text("打开下载目录") }
             }
         }
 
