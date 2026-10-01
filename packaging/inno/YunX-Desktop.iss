@@ -54,7 +54,11 @@ VersionInfoProductName={#AppName}
 VersionInfoProductVersion={#AppVersion}
 
 [Languages]
+; 简体中文语言文件不是 Inno 自带的（来自社区翻译仓库），缺失时自动降级为英文向导，
+; 避免在没预置该文件的构建机（如 CI）上编译失败。build-package.ps1 会尝试自动下载补齐。
+#if FileExists(AddBackslash(CompilerPath) + "Languages\ChineseSimplified.isl")
 Name: "chinese"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+#endif
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]

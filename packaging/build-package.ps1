@@ -93,6 +93,19 @@ try {
     if (-not $SkipInstaller) {
         Step '4/4 安装版（Inno Setup + LZMA2 solid）'
         if (-not $Iscc) { throw '需要 ISCC.exe（winget install JRSoftware.InnoSetup）' }
+        # 简体中文向导语言文件不是 Inno 自带的；缺失时自动补（CI 上没有预置）
+        $islDir = Join-Path (Split-Path -Parent $Iscc) 'Languages'
+        $isl = Join-Path $islDir 'ChineseSimplified.isl'
+        if (-not (Test-Path $isl)) {
+            $url = 'https://raw.githubusercontent.com/kira-96/Inno-Setup-Chinese-Simplified-Translation/master/ChineseSimplified.isl'
+            try {
+                New-Item -ItemType Directory -Force -Path $islDir | Out-Null
+                Invoke-WebRequest -Uri $url -OutFile $isl -TimeoutSec 60 -UseBasicParsing
+                Write-Host "  已补齐中文向导语言文件: $isl"
+            } catch {
+                Write-Warning "未能获取 ChineseSimplified.isl，安装向导将使用英文（不影响功能）: $($_.Exception.Message)"
+            }
+        }
         $iss = Join-Path $repoRoot 'packaging\inno\YunX-Desktop.iss'
         $icon = Join-Path $repoRoot 'packaging\icon.ico'
         & $Iscc "/DAppVersion=$Version" "/DAppImage=$appImage" "/DOutDir=$OutDir" "/DIconFile=$icon" $iss |
