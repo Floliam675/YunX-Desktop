@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** 应用版本（与打包配置保持一致） */
-const val APP_VERSION = "0.4.7"
+const val APP_VERSION = "0.4.8"
 
 private const val REPO_URL = "https://github.com/Floliam675/YunX-Desktop"
 private const val RELEASES_URL = REPO_URL + "/releases"

@@ -19,6 +19,10 @@ dependencies {
     // 不再内嵌 Chromium：旧 JCEF 方案占包体约 139 MB，用户首次运行还要解包 ~120 MB 内核。
     // CDP 走 JDK 自带 java.net.http —— 必须在 jlink 运行时里保留该模块（见 modules()）。
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
+    // 只用 material3；M2 的 material-desktop（约 1.6 MB）是 compose.desktop.currentOs 带进来的，源码 0 处使用
+    configurations.all {
+        exclude(group = "org.jetbrains.compose.material", module = "material-desktop")
+    }
 }
 
 compose.desktop {
@@ -27,7 +31,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Exe)
             packageName = "YunX Desktop"
-            packageVersion = "0.4.7"
+            packageVersion = "0.4.8"
             // 网页登录用 JDK 的 java.net.http 连本机 Edge 的调试端口；jlink 默认不含该模块，必须显式保留
             modules("java.net.http")
             // exe 元数据（文件属性 → 详细信息 可见）；注意：这不等于代码签名，

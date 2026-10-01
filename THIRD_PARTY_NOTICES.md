@@ -13,5 +13,7 @@ YunX Desktop 复用了以下第三方组件/项目。各组件以各自许可证
 | org.json | JSON 解析 | JSON License (permissive) |
 | OpenJDK 运行时（打包内置，来自构建用 JDK：Azul Zulu 或 Eclipse Temurin） | 运行本程序所需 JRE，以及包内 `runtime\bin\java(w).exe` launcher（该 launcher 由 Java 厂商签名） | GPL-2.0-with-classpath-exception |
 | Material Icons (core，随 Material3 引入；extended 集已移除) | 图标 | Apache-2.0 |
+| [7-Zip](https://www.7-zip.org/) 的 SFX 自解压模块（内嵌在便携版 exe 中） | 便携版的自解压外壳 | LGPL-2.1+（含 unRAR 限制条款） |
+| [Inno Setup](https://jrsoftware.org/isinfo.php)（仅构建期使用；生成的安装器/卸载器内嵌其运行时代码） | 生成安装版 exe | Inno Setup License（允许自由分发其生成的安装程序） |
 
 分发说明：AGPL-3.0 全文见仓库根 [LICENSE](LICENSE)；本仓库不复制各组件许可全文，发行包内已随附/可从上述来源取得。

@@ -47,7 +47,7 @@
 | 版本 | 文件 | 说明 |
 | --- | --- | --- |
 | **安装版**（推荐） | `YunX-Desktop-<版本>-win64-installer.exe` | 双击安装：可选安装目录，默认按用户装到 `%LOCALAPPDATA%\YunX Desktop`，在开始菜单创建快捷方式，可从「应用和功能」正常卸载。静默安装加 `/quiet` |
-| 免安装版 | `YunX-Desktop-<版本>-win64-portable.zip` | 解压后双击 `YunX Desktop\YunX Desktop.exe` 即可运行 |
+| 免安装版 | `YunX-Desktop-<版本>-win64-portable.exe` | 免安装：双击后选择目录解压（7z 自解压，无需装解压软件），再运行 `YunX Desktop\YunX Desktop.exe` |
 
 系统要求：Windows 10 / 11（x64）。两种版本都**内置 Java 运行时，无需另行安装 Java**。
 
@@ -58,6 +58,7 @@
 - OkHttp（网络请求 + 分片下载）
 - 网页登录：驱动本机已安装的浏览器（Chromium 系走 DevTools Protocol，Firefox 走 WebDriver BiDi），**不随包分发浏览器内核**
 - 持久化：JSON 文件（账号 / 下载任务 / 设置）+ AES-GCM 密钥文件（凭据）
+- 交付打包：jpackage 出 app-image，便携版用 7z 自解压（LZMA2），安装版用 Inno Setup（LZMA2 solid）
 
 ## 构建
 
