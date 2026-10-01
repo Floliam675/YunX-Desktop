@@ -22,6 +22,9 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $appImage = (Resolve-Path $AppImage).Path
 if (-not (Test-Path $appImage)) { throw "app-image 不存在: $appImage" }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+# 输出目录必须绝对化：Inno 的 OutputDir 用相对路径时是相对 .iss 所在目录解析，而脚本按当前
+# 工作目录建目录，两者会分叉（CI 传 "dist" 时安装包曾落到 packaging/inno/dist/，Release 缺附件）。
+$OutDir = (Get-Item -LiteralPath $OutDir).FullName
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("yunx-pack-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 
@@ -111,6 +114,8 @@ try {
         & $Iscc "/DAppVersion=$Version" "/DAppImage=$appImage" "/DOutDir=$OutDir" "/DIconFile=$icon" $iss |
             Select-String -Pattern 'Successful|Error|Warning' | ForEach-Object { '  ' + $_.Line.Trim() }
         if ($LASTEXITCODE -ne 0) { throw "ISCC 失败: $LASTEXITCODE" }
+        $produced = Join-Path $OutDir "YunX-Desktop-$Version-win64-installer.exe"
+        if (-not (Test-Path $produced)) { throw "ISCC 未在 $OutDir 生成安装包" }
     }
 
     # ---------- 校验和 ----------
