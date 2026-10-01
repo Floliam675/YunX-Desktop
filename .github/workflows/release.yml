@@ -185,10 +185,20 @@ jobs:
           draft: true
           generate_release_notes: true
           body: |
-            未签名的 Windows 安装包 / 便携包。若系统提示被拦截：
+            两种发行版内容完全相同，任选其一：
+
+            | 版本 | 文件 | 说明 |
+            | --- | --- | --- |
+            | **安装版**（推荐） | `YunX-Desktop-<版本>-win64-installer.exe` | 双击安装（Inno Setup，LZMA2），按用户装到 %LOCALAPPDATA%\\YunX Desktop，开始菜单建快捷方式，可从「应用和功能」卸载；静默安装加 `/VERYSILENT` |
+            | 免安装版 | `YunX-Desktop-<版本>-win64-portable.exe` | 7z 自解压（无需装解压软件）：双击选目录解压，再运行 `YunX Desktop\\YunX Desktop.exe` |
+
+            两种版本都**内置 Java 运行时，无需另行安装 Java**；请用 `SHA256.txt` 校验文件完整性。
+
+            **若系统提示被拦截**（本程序没有代码签名）：
             - SmartScreen：点「更多信息 → 仍要运行」。
-            - 智能应用控制（Smart App Control，无“仍要运行”）：双击包内的 Start-YunX.bat，
-              它用包内已签名的 Java launcher 启动，无需安装任何东西（也无需关闭该功能）。
-            请用 SHA256.txt 校验文件完整性。详见 README「常见问题」。
+            - 智能应用控制（Smart App Control，无“仍要运行”按钮）：双击包内的 `Start-YunX.bat`，
+              它用包内由 Java 厂商签名的 launcher 启动同一程序，无需安装任何东西（也无需关闭该功能）。
+
+            详见 README「常见问题」。
           files: |
             dist/**
